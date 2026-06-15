@@ -56,8 +56,14 @@ function descText(description) {
 // it writes to var/transient/. Keyed by the XSD's targetNamespace URL.
 /** @type {Map<string, Map<string, {description:string, arbitrary:boolean, attributes:{name:string,description:string,required:boolean,type:string,default:string}[]}>>} */
 let projectByUrl = new Map();
-let coreUrl = null;        // namespace URL backing the default `f:` prefix
 let schemaGenerating = false;
+
+// The global `f:` prefix is registered to BOTH Fluid namespaces; TYPO3 CMS
+// ViewHelpers override/extend the standalone ones, so CMS is merged last.
+const F_NAMESPACES = [
+  'http://typo3.org/ns/TYPO3Fluid/Fluid/ViewHelpers',
+  'http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers',
+];
 
 function hasProjectData() { return projectByUrl.size > 0; }
 
@@ -126,10 +132,6 @@ function loadXsdDir() {
   }
   if (!byUrl.size) return false;
   projectByUrl = byUrl;
-  // The default `f:` namespace is whichever schema carries the core ViewHelpers.
-  for (const [url, tags] of byUrl) {
-    if (tags.has('if') && tags.has('for') && tags.has('render')) { coreUrl = url; break; }
-  }
   log(`loaded ${byUrl.size} ViewHelper namespace(s) from ${dir}`);
   return true;
 }
@@ -188,15 +190,26 @@ function namespacesForDoc(text) {
 /** Resolve the ViewHelpers available under `prefix` in the given document. */
 function tagsForPrefix(prefix, docText) {
   if (hasProjectData()) {
+    // Resolve the namespace URL(s) backing this prefix. `f:` is global and maps
+    // to both Fluid namespaces (merged); other prefixes come from the template's
+    // xmlns:/{namespace} declarations.
     const ns = namespacesForDoc(docText);
-    let url = ns[prefix];
-    if (!url && prefix === 'f') url = coreUrl;
-    if (url && projectByUrl.has(url)) {
-      const out = [];
-      for (const [tagName, vh] of projectByUrl.get(url)) {
-        out.push({ name: `${prefix}:${tagName}`, tagName, description: vh.description, arbitrary: vh.arbitrary, attributes: vh.attributes });
+    let urls;
+    if (prefix === 'f') urls = F_NAMESPACES.filter(u => projectByUrl.has(u));
+    else if (ns[prefix]) urls = [ns[prefix]];
+    else urls = [];
+
+    if (urls.length) {
+      const merged = new Map();
+      for (const url of urls) {
+        const m = projectByUrl.get(url);
+        if (m) for (const [tagName, vh] of m) merged.set(tagName, vh); // later overrides
       }
-      return out;
+      if (merged.size) {
+        return [...merged].map(([tagName, vh]) => ({
+          name: `${prefix}:${tagName}`, tagName, description: vh.description, arbitrary: vh.arbitrary, attributes: vh.attributes,
+        }));
+      }
     }
   }
   // Fallback to the bundled seed (default `f:` only).
