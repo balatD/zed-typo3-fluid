@@ -22,7 +22,7 @@ be copied file-for-file:
 | ViewHelper completion / docs | VS Code **HTML Custom Data** | no equivalent → needs an LSP |
 | Live analysis | TS client runs `fluid`/`typo3` PHP binary | needs an LSP |
 | Snippets | `snippets/*.json` | same format ✅ |
-| File detection | globs over `Resources/Private/**` dirs | `path_suffixes` + `first_line_pattern`, **no globs** |
+| File detection | globs over `Resources/Private/**` dirs | suffixes + `first_line_pattern`; dir globs via the `file_types` setting |
 
 Highlighting is driven by a purpose-built **`tree-sitter-fluid`** grammar (in the
 sibling `tree-sitter-fluid/` repo) that extends tree-sitter-html and actually
@@ -47,20 +47,41 @@ and arrays are tokenized, not just the surrounding HTML.
 
 ### Known limitations
 
-- **File detection.** Zed `path_suffixes` can't glob TYPO3's
-  `Resources/Private/Templates/**` directories. Detection is therefore: the
-  explicit Fluid suffixes (`*.fluid.html`, `*.fluid`, …) **plus** a
-  `first_line_pattern` that sniffs `{namespace`, `data-namespace-typo3-fluid`,
-  `xmlns:f`, or a `<f:…>`/`<x:y>` tag on line 1. Templates that open with plain
-  HTML still need a manual language switch (command palette → language selector).
 - **Grammar edge cases** (localized, non-fatal — the rest of the file still
-  highlights): same-quote nesting inside an attribute value
-  (`value='{ … 'x': … }'`) and the interior of string literals are not fully
-  tokenized.
+  highlights): the interior of string literals is not tokenized, and `<f:comment>`
+  content is parsed rather than treated as opaque.
 
 ## File detection
 
-Auto-detected suffixes: `*.fluid.html`, `*.fluid.htm`, `*.fluid.txt`, `*.fluid`.
+Real TYPO3 templates are plain `*.html` and their `<f:…>` markers are usually
+**not on the first line** — and Zed only inspects the first line for content-based
+detection (it never scans the body). So the reliable way to detect Fluid is by
+**path**, the same way the VS Code extension does.
+
+The extension auto-detects the explicit suffixes — `*.fluid.html`, `*.fluid.htm`,
+`*.fluid.txt`, `*.fluid` — plus a `first_line_pattern` that catches a `{namespace`,
+`data-namespace-typo3-fluid`, `xmlns:f`, or `<f:…>` marker **when it is on line 1**.
+
+For everything else (the common case), add a `file_types` glob to your Zed
+settings — Zed matches these globs against the **full path**, so any `.html` in a
+TYPO3 template directory is recognized as Fluid:
+
+```json [settings]
+{
+  "file_types": {
+    "Fluid": [
+      "**/Resources/Private/**/*.html",
+      "**/ContentBlocks/**/templates/*.html",
+      "*.fluid.html",
+      "*.fluid"
+    ]
+  }
+}
+```
+
+Put it in your user settings (`~/.config/zed/settings.json`) to cover every
+project, or in a project-local `.zed/settings.json` to share it with your team.
+Adjust the globs if your sitepackage uses other directories.
 
 ## Language server
 
