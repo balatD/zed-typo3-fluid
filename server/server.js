@@ -16,7 +16,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 
 // ───────────────────────────── ViewHelper data ─────────────────────────────
 /** @type {{name:string, description?:any, attributes?:any[], references?:any[]}[]} */
@@ -50,6 +50,160 @@ function descText(description) {
   return description.value || '';
 }
 
+// ──────────────────── Project ViewHelpers (XSD schemas) ─────────────────────
+// Dynamic, project-aware ViewHelper data — covers core, extensions AND custom
+// ViewHelpers — by running `typo3 fluid:schema:generate` and parsing the XSDs
+// it writes to var/transient/. Keyed by the XSD's targetNamespace URL.
+/** @type {Map<string, Map<string, {description:string, attributes:{name:string,description:string,required:boolean}[]}>>} */
+let projectByUrl = new Map();
+let coreUrl = null;        // namespace URL backing the default `f:` prefix
+let schemaGenerating = false;
+
+function hasProjectData() { return projectByUrl.size > 0; }
+
+/** Minimal XSD reader: pull <xsd:element> ViewHelpers + their <xsd:attribute>s. */
+function parseXsd(xml) {
+  const nsMatch = /targetNamespace\s*=\s*"([^"]+)"/.exec(xml);
+  if (!nsMatch) return null;
+  const url = nsMatch[1];
+  const tags = new Map();
+
+  // Each top-level <xsd:element name="…"> … </xsd:element> is one ViewHelper.
+  const elementRe = /<xsd:element\b[^>]*\bname\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/xsd:element>/g;
+  for (const el of matchAll(xml, elementRe)) {
+    const tagName = el[1];
+    const body = el[2];
+    // Element documentation = first <xsd:documentation> that is NOT inside an attribute.
+    const beforeAttrs = body.split(/<xsd:attribute\b/)[0];
+    const elDoc = firstCdataDoc(beforeAttrs);
+    const attributes = [];
+    const attrRe = /<xsd:attribute\b([^>]*)>([\s\S]*?)<\/xsd:attribute>|<xsd:attribute\b([^>]*)\/>/g;
+    for (const at of matchAll(body, attrRe)) {
+      const attrTag = at[1] || at[3] || '';
+      const inner = at[2] || '';
+      const nm = /\bname\s*=\s*"([^"]+)"/.exec(attrTag);
+      if (!nm) continue;
+      attributes.push({
+        name: nm[1],
+        description: firstCdataDoc(inner),
+        required: /\buse\s*=\s*"required"/.test(attrTag),
+      });
+    }
+    tags.set(tagName, { description: elDoc, attributes });
+  }
+  return { url, tags };
+}
+
+function firstCdataDoc(fragment) {
+  const m = /<xsd:documentation\b[^>]*>\s*(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))\s*<\/xsd:documentation>/.exec(fragment);
+  if (!m) return '';
+  return decodeEntities((m[1] !== undefined ? m[1] : m[2] || '').trim());
+}
+
+function decodeEntities(s) {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;|&apos;/g, "'").replace(/&amp;/g, '&');
+}
+
+function schemaDir() { return path.join(rootPath, 'var', 'transient'); }
+
+function loadXsdDir() {
+  const dir = schemaDir();
+  let files = [];
+  try {
+    files = fs.readdirSync(dir, { recursive: true }).filter(f => String(f).endsWith('.xsd'));
+  } catch (_) { return false; }
+  if (!files.length) return false;
+  const byUrl = new Map();
+  for (const f of files) {
+    try {
+      const parsed = parseXsd(fs.readFileSync(path.join(dir, String(f)), 'utf8'));
+      if (parsed && parsed.tags.size) byUrl.set(parsed.url, parsed.tags);
+    } catch (_) { /* skip unreadable/odd files */ }
+  }
+  if (!byUrl.size) return false;
+  projectByUrl = byUrl;
+  // The default `f:` namespace is whichever schema carries the core ViewHelpers.
+  for (const [url, tags] of byUrl) {
+    if (tags.has('if') && tags.has('for') && tags.has('render')) { coreUrl = url; break; }
+  }
+  log(`loaded ${byUrl.size} ViewHelper namespace(s) from ${dir}`);
+  return true;
+}
+
+/** Run `typo3 fluid:schema:generate` (binary-detected, DDEV-aware), then reload. */
+function generateSchemas() {
+  if (schemaGenerating) return;
+  schemaGenerating = true;
+  const candidates = schemaCandidates();
+  let i = 0;
+  const tryNext = () => {
+    if (i >= candidates.length) { schemaGenerating = false; log('no typo3 binary found to generate Fluid schemas'); return; }
+    const c = candidates[i++];
+    let child;
+    try { child = spawn(c.command, c.args, { cwd: rootPath }); }
+    catch (_) { return tryNext(); }
+    child.on('error', () => tryNext());
+    child.on('close', (code) => {
+      if (code === 0 && loadXsdDir()) {
+        schemaGenerating = false;
+        log(`generated schemas via "${[c.command, ...c.args].join(' ')}"`);
+        for (const uri of documents.keys()) runDiagnostics(uri);
+      } else {
+        tryNext();
+      }
+    });
+  };
+  tryNext();
+}
+
+function schemaCandidates() {
+  const subst = (s) => String(s).replaceAll('${workspaceFolder}', rootPath);
+  const out = [];
+  const ddev = ddevAvailable();
+  if (config.bin.typo3.path) {
+    out.push({ command: subst(config.bin.typo3.path), args: [...config.bin.typo3.args.map(subst), 'fluid:schema:generate'] });
+  }
+  if (ddev) out.push({ command: ddev, args: ['typo3', 'fluid:schema:generate'] });
+  for (const b of ['vendor/bin/typo3', 'bin/typo3', '.Build/bin/typo3']) {
+    out.push({ command: path.join(rootPath, b), args: ['fluid:schema:generate'] });
+  }
+  return out;
+}
+
+// Map prefixes used in a template to their namespace URLs, via `xmlns:x="…"`
+// and `{namespace x=Vendor\Ext}` declarations.
+function namespacesForDoc(text) {
+  const map = {};
+  for (const m of matchAll(text, /xmlns:([a-z0-9_]+)\s*=\s*"([^"]+)"/gi)) map[m[1]] = m[2];
+  for (const m of matchAll(text, /\{namespace\s+([a-z0-9_]+)\s*=\s*([^}\s]+)\s*\}/gi)) {
+    map[m[1]] = 'http://typo3.org/ns/' + m[2].trim().replace(/\\+/g, '/').replace(/\/+$/, '');
+  }
+  return map;
+}
+
+/** Resolve the ViewHelpers available under `prefix` in the given document. */
+function tagsForPrefix(prefix, docText) {
+  if (hasProjectData()) {
+    const ns = namespacesForDoc(docText);
+    let url = ns[prefix];
+    if (!url && prefix === 'f') url = coreUrl;
+    if (url && projectByUrl.has(url)) {
+      const out = [];
+      for (const [tagName, vh] of projectByUrl.get(url)) {
+        out.push({ name: `${prefix}:${tagName}`, tagName, description: vh.description, attributes: vh.attributes });
+      }
+      return out;
+    }
+  }
+  // Fallback to the bundled seed (default `f:` only).
+  if (prefix === 'f') return TAGS.map(t => ({ name: t.name, tagName: t.name.slice(2), description: descText(t.description), attributes: t.attributes || [] }));
+  return [];
+}
+
+function lookupTag(prefix, tagName, docText) {
+  return tagsForPrefix(prefix, docText).find(t => t.tagName === tagName) || null;
+}
+
 // ───────────────────────────── Configuration ───────────────────────────────
 const config = {
   bin: {
@@ -57,7 +211,7 @@ const config = {
     fluid: { path: '', args: [] },
     useDdevIfAvailable: true,
   },
-  features: { liveTemplateAnalysis: true },
+  features: { liveTemplateAnalysis: true, generateViewHelperSchema: true },
 };
 let rootPath = process.cwd();
 /** @type {Map<string,string>} */
@@ -81,8 +235,9 @@ function applySettings(settings) {
       config.bin.useDdevIfAvailable = s.bin.useDdevIfAvailable;
     }
   }
-  if (s.features && typeof s.features.liveTemplateAnalysis === 'boolean') {
-    config.features.liveTemplateAnalysis = s.features.liveTemplateAnalysis;
+  if (s.features) {
+    if (typeof s.features.liveTemplateAnalysis === 'boolean') config.features.liveTemplateAnalysis = s.features.liveTemplateAnalysis;
+    if (typeof s.features.generateViewHelperSchema === 'boolean') config.features.generateViewHelperSchema = s.features.generateViewHelperSchema;
   }
   binaryCache = null; // re-resolve binary after config change
 }
@@ -170,7 +325,12 @@ function onInitialize(msg) {
     },
     serverInfo: { name: 'fluid-language-server', version: '0.0.1' },
   });
-  log(`initialized (root: ${rootPath}, ${TAGS.length} ViewHelpers loaded)`);
+  log(`initialized (root: ${rootPath}, ${TAGS.length} bundled ViewHelpers)`);
+
+  // Project-dynamic ViewHelpers: load any existing XSDs immediately, then
+  // (re)generate in the background so completion/hover cover custom ViewHelpers.
+  loadXsdDir();
+  if (config.features.generateViewHelperSchema) generateSchemas();
 }
 
 // ───────────────────────────── Completion ──────────────────────────────────
@@ -183,33 +343,32 @@ function lineUpToCursor(text, position) {
 function onCompletion(params) {
   const text = documents.get(params.textDocument.uri);
   if (text === undefined) return null;
-  const prefix = lineUpToCursor(text, params.position);
+  const line = lineUpToCursor(text, params.position);
 
   // Inside an open ViewHelper tag → complete its attributes.
-  const openTag = /<([a-z][a-z0-9]*(?::[a-z0-9.]+)?)\b[^<>]*$/i.exec(prefix);
-  if (openTag && openTag[1].includes(':')) {
-    const tag = TAG_BY_NAME.get(openTag[1]);
-    if (tag && Array.isArray(tag.attributes)) {
-      // only if we're at an attribute boundary (after whitespace)
-      if (/[\s]$|[\s][a-z0-9-]*$/i.test(prefix)) {
-        const used = new Set((prefix.match(/([a-z0-9-]+)=/gi) || []).map(s => s.slice(0, -1)));
-        return tag.attributes.filter(a => !used.has(a.name)).map(a => ({
-          label: a.name,
-          kind: 5, // Field
-          documentation: { kind: 'markdown', value: descText(a.description) },
-          insertText: `${a.name}="$1"`,
-          insertTextFormat: 2, // snippet
-        }));
-      }
+  const openTag = /<([a-z][a-z0-9_]*):([a-z0-9.]+)\b[^<>]*$/i.exec(line);
+  if (openTag && /[\s]$|[\s][a-z0-9-]*$/i.test(line)) {
+    const vh = lookupTag(openTag[1], openTag[2], text);
+    if (vh && Array.isArray(vh.attributes)) {
+      const used = new Set((line.match(/([a-z0-9-]+)=/gi) || []).map(s => s.slice(0, -1)));
+      return vh.attributes.filter(a => !used.has(a.name)).map(a => ({
+        label: a.name,
+        kind: 5, // Field
+        detail: a.required ? 'required' : undefined,
+        documentation: { kind: 'markdown', value: descText(a.description) },
+        insertText: `${a.name}="$1"`,
+        insertTextFormat: 2, // snippet
+        sortText: (a.required ? '0' : '1') + a.name,
+      }));
     }
   }
 
-  // Typing a tag name: `<f:` or `<f:fo` or bare `<`.
-  const tagStart = /<([a-z0-9]*(?::[a-z0-9.]*)?)$/i.exec(prefix);
+  // Typing a tag name: `<f:`, `<f:fo`, `<my:teas` …
+  const tagStart = /<([a-z0-9_]+):([a-z0-9.]*)$/i.exec(line);
   if (tagStart) {
-    const typed = tagStart[1].toLowerCase();
-    return TAGS
-      .filter(t => t.name.toLowerCase().startsWith(typed))
+    const typed = tagStart[2].toLowerCase();
+    return tagsForPrefix(tagStart[1], text)
+      .filter(t => t.tagName.toLowerCase().startsWith(typed))
       .map(t => ({
         label: t.name,
         kind: 7, // Class (tag)
@@ -228,27 +387,29 @@ function onHover(params) {
   const line = lines[params.position.line] || '';
   const col = params.position.character;
 
-  // Hover over a ViewHelper tag name: <f:format.raw or </f:format.raw
-  const tagRe = /<\/?([a-z][a-z0-9]*:[a-z0-9.]+)/gi;
+  // Hover over a ViewHelper tag name: <ns:name or </ns:name
+  const tagRe = /<\/?([a-z][a-z0-9_]*):([a-z0-9.]+)/gi;
   for (const m of matchAll(line, tagRe)) {
+    const full = `${m[1]}:${m[2]}`;
     const nameStart = m.index + m[0].indexOf(m[1]);
-    const nameEnd = nameStart + m[1].length;
+    const nameEnd = nameStart + full.length;
     if (col >= nameStart && col <= nameEnd) {
-      const tag = TAG_BY_NAME.get(m[1]);
-      if (tag) return { contents: { kind: 'markdown', value: `**${tag.name}**\n\n${descText(tag.description)}` } };
+      const vh = lookupTag(m[1], m[2], text);
+      if (vh) return { contents: { kind: 'markdown', value: `**${full}**\n\n${descText(vh.description)}` } };
     }
   }
 
   // Hover over an attribute name inside a known ViewHelper tag.
   const openTag = lastOpenTagBefore(lines, params.position);
-  if (openTag) {
+  if (openTag && openTag.includes(':')) {
+    const [p, n] = [openTag.slice(0, openTag.indexOf(':')), openTag.slice(openTag.indexOf(':') + 1)];
     const attrRe = /([a-z][a-z0-9-]*)\s*=/gi;
     for (const m of matchAll(line, attrRe)) {
       const start = m.index;
       const end = start + m[1].length;
       if (col >= start && col <= end) {
-        const tag = TAG_BY_NAME.get(openTag);
-        const attr = tag && (tag.attributes || []).find(a => a.name === m[1]);
+        const vh = lookupTag(p, n, text);
+        const attr = vh && vh.attributes.find(a => a.name === m[1]);
         if (attr) return { contents: { kind: 'markdown', value: `**${openTag} → ${attr.name}**\n\n${descText(attr.description)}` } };
       }
     }
@@ -268,7 +429,7 @@ function lastOpenTagBefore(lines, position) {
   const lastLt = buf.lastIndexOf('<');
   const lastGt = buf.lastIndexOf('>');
   if (lastLt === -1 || lastLt < lastGt) return null;
-  const m = /^<\/?([a-z][a-z0-9]*:[a-z0-9.]+)/i.exec(buf.slice(lastLt));
+  const m = /^<\/?([a-z][a-z0-9_]*:[a-z0-9.]+)/i.exec(buf.slice(lastLt));
   return m ? m[1] : null;
 }
 

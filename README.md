@@ -77,18 +77,29 @@ spawned by `src/lib.rs` via Zed's Node) provides:
   `vendor/bin/fluid analyze`, all with `--json --stdin`. If no binary is found
   it silently provides no diagnostics (completion/hover still work).
 
-ViewHelper metadata comes from `server/viewhelpers.json` (VS Code HTML
-custom-data shape). A curated seed of 30 common core/TYPO3 ViewHelpers ships out
-of the box. To get the **full** set (core + your extensions + custom
-ViewHelpers), generate it from a real project with the source extension's PHP
-generator and replace the file (or point `FLUID_VIEWHELPERS_JSON` at it):
+### ViewHelper data: project-dynamic (incl. custom ViewHelpers)
 
-```bash
-# in a checkout of FriendsOfTYPO3/vscode-fluid-language
-cd fluid && composer install && composer generate
-# → fluid/out/schema_TYPO3_CMS_*_ViewHelpers.json  (merge the "tags" arrays
-#   into server/viewhelpers.json)
+Completion/hover are **project-aware** and cover your **custom** ViewHelpers —
+something the VS Code extension does not do (its README lists "only built-in
+ViewHelpers … no XSD support yet"). On startup, in a TYPO3 13.2+ project, the
+server runs
+
 ```
+vendor/bin/typo3 fluid:schema:generate      # binary-detected, DDEV-aware
+```
+
+which writes XSD schema files for **every** registered namespace (core,
+extensions and your own ViewHelpers) into `var/transient/`. The server parses
+those XSDs and resolves completion/hover **per template** using its `xmlns:`
+and `{namespace x=Vendor\Ext}` declarations:
+
+- `<f:…>` → core/merged Fluid namespace,
+- `<my:…>` where the file declares `{namespace my=Vendor\Ext\ViewHelpers}` →
+  your custom ViewHelpers, with their real attributes + docblocks.
+
+If schema generation isn't available (no `typo3` binary, older TYPO3), it falls
+back to the bundled `server/viewhelpers.json` — a curated seed of 30 core
+ViewHelpers (VS Code HTML custom-data shape) so `<f:…>` still works offline.
 
 ### Configuration
 
@@ -100,7 +111,10 @@ Configure via Zed settings (`lsp."fluid-language-server".settings`):
     "fluid-language-server": {
       "settings": {
         "bin": { "useDdevIfAvailable": true, "fluid": { "path": "", "args": [] } },
-        "features": { "liveTemplateAnalysis": true }
+        "features": {
+          "liveTemplateAnalysis": true,
+          "generateViewHelperSchema": true
+        }
       }
     }
   }
@@ -127,11 +141,10 @@ Configure via Zed settings (`lsp."fluid-language-server".settings`):
 
 ## Roadmap
 
-- **Auto-generate the ViewHelper dataset** from the open project at server
-  startup (run the project's Fluid schema generation), so completion/hover cover
-  installed extensions and custom ViewHelpers without a manual merge.
 - **Inline-syntax completion** inside `{f:…()}` expressions (currently tag
   syntax only, matching the source extension).
+- **Smarter schema refresh** — regenerate XSDs only when ViewHelper sources
+  change, rather than once per server start.
 - **Publish:** push `tree-sitter-fluid` to GitHub (swap the `file://` grammar URL
   for the GitHub URL) and submit to the Zed extension registry.
 
