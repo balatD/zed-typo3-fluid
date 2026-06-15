@@ -54,7 +54,7 @@ function descText(description) {
 // Dynamic, project-aware ViewHelper data — covers core, extensions AND custom
 // ViewHelpers — by running `typo3 fluid:schema:generate` and parsing the XSDs
 // it writes to var/transient/. Keyed by the XSD's targetNamespace URL.
-/** @type {Map<string, Map<string, {description:string, attributes:{name:string,description:string,required:boolean}[]}>>} */
+/** @type {Map<string, Map<string, {description:string, arbitrary:boolean, attributes:{name:string,description:string,required:boolean,type:string,default:string}[]}>>} */
 let projectByUrl = new Map();
 let coreUrl = null;        // namespace URL backing the default `f:` prefix
 let schemaGenerating = false;
@@ -83,13 +83,17 @@ function parseXsd(xml) {
       const inner = at[2] || '';
       const nm = /\bname\s*=\s*"([^"]+)"/.exec(attrTag);
       if (!nm) continue;
+      const ty = /\btype\s*=\s*"([^"]+)"/.exec(attrTag);
+      const def = /\bdefault\s*=\s*"([^"]*)"/.exec(attrTag);
       attributes.push({
         name: nm[1],
         description: firstCdataDoc(inner),
         required: /\buse\s*=\s*"required"/.test(attrTag),
+        type: ty ? ty[1] : '',
+        default: def ? def[1] : undefined,
       });
     }
-    tags.set(tagName, { description: elDoc, attributes });
+    tags.set(tagName, { description: elDoc, arbitrary: /<xsd:anyAttribute\b/.test(body), attributes });
   }
   return { url, tags };
 }
@@ -190,18 +194,154 @@ function tagsForPrefix(prefix, docText) {
     if (url && projectByUrl.has(url)) {
       const out = [];
       for (const [tagName, vh] of projectByUrl.get(url)) {
-        out.push({ name: `${prefix}:${tagName}`, tagName, description: vh.description, attributes: vh.attributes });
+        out.push({ name: `${prefix}:${tagName}`, tagName, description: vh.description, arbitrary: vh.arbitrary, attributes: vh.attributes });
       }
       return out;
     }
   }
   // Fallback to the bundled seed (default `f:` only).
-  if (prefix === 'f') return TAGS.map(t => ({ name: t.name, tagName: t.name.slice(2), description: descText(t.description), attributes: t.attributes || [] }));
+  if (prefix === 'f') return TAGS.map(t => ({ name: t.name, tagName: t.name.slice(2), description: descText(t.description), arbitrary: true, attributes: (t.attributes || []).map(a => ({ name: a.name, description: descText(a.description), required: false, type: '' })) }));
   return [];
 }
 
 function lookupTag(prefix, tagName, docText) {
   return tagsForPrefix(prefix, docText).find(t => t.tagName === tagName) || null;
+}
+
+// ──────────────────── Static schema validation ─────────────────────────────
+function friendlyType(xsdType) {
+  switch (String(xsdType).replace(/^xsd:/, '')) {
+    case 'integer': return 'integer';
+    case 'float': case 'double': return 'number';
+    case 'boolean': return 'boolean';
+    case 'string': return 'string';
+    default: return 'mixed';
+  }
+}
+
+/** Returns true when `value` (a literal, no {expression}) violates `xsdType`. */
+function typeMismatch(xsdType, value) {
+  const v = value.trim();
+  if (v === '') return false;
+  switch (String(xsdType).replace(/^xsd:/, '')) {
+    case 'integer': return !/^[+-]?\d+$/.test(v);
+    case 'float': case 'double': return !/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(v);
+    case 'boolean': return !/^(0|1|true|false)$/i.test(v);
+    default: return false; // string / anySimpleType / unknown → accept anything
+  }
+}
+
+function makePositioner(text) {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) if (text[i] === '\n') starts.push(i + 1);
+  return (off) => {
+    let lo = 0, hi = starts.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= off) lo = mid; else hi = mid - 1; }
+    return { line: lo, character: off - starts[lo] };
+  };
+}
+
+function skipBraces(text, i) {
+  let depth = 0;
+  for (; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') { depth--; if (depth === 0) return i + 1; }
+  }
+  return i;
+}
+
+/** Parse attributes of one start tag beginning at offset `i` (after the name). */
+function parseTagAttributes(text, i) {
+  const attrs = [];
+  const n = text.length;
+  while (i < n) {
+    while (i < n && /\s/.test(text[i])) i++;
+    if (i >= n) break;
+    const c = text[i];
+    if (c === '>') return { attrs, end: i + 1 };
+    if (c === '/' && text[i + 1] === '>') return { attrs, end: i + 2 };
+    if (c === '<') return { attrs, end: i };          // malformed; bail
+    if (c === '{') { i = skipBraces(text, i); continue; } // bare {expression} in tag
+    const nameStart = i;
+    while (i < n && !/[\s=>/]/.test(text[i])) i++;
+    const name = text.slice(nameStart, i);
+    while (i < n && /\s/.test(text[i])) i++;
+    if (text[i] === '=') {
+      i++;
+      while (i < n && /\s/.test(text[i])) i++;
+      const q = text[i];
+      if (q === '"' || q === "'") {
+        i++;
+        const valStart = i;
+        let dynamic = false;
+        while (i < n && text[i] !== q) {
+          if (text[i] === '\\') { i += 2; continue; }
+          if (text[i] === '{') { dynamic = true; i = skipBraces(text, i); continue; }
+          i++;
+        }
+        attrs.push({ name, value: text.slice(valStart, i), valStart, valEnd: i, dynamic });
+        i++; // closing quote
+      } else {
+        const valStart = i;
+        while (i < n && !/[\s>/]/.test(text[i])) i++;
+        attrs.push({ name, value: text.slice(valStart, i), valStart, valEnd: i, dynamic: false });
+      }
+    } else {
+      attrs.push({ name, value: null, dynamic: false });
+    }
+  }
+  return { attrs, end: i };
+}
+
+function scanViewHelperTags(text) {
+  const tags = [];
+  const re = /<([a-z][a-z0-9_]*):([a-z0-9.]+)/gi;
+  let m;
+  while ((m = re.exec(text))) {
+    const after = m.index + m[0].length;
+    const { attrs, end } = parseTagAttributes(text, after);
+    tags.push({ prefix: m[1], name: m[2], nameStart: m.index + 1, nameEnd: after, attrs });
+    if (end > re.lastIndex) re.lastIndex = end;
+  }
+  return tags;
+}
+
+/** Validate literal attribute types and required attributes against the schema. */
+function validateSchema(text) {
+  if (!hasProjectData()) return []; // need real types/required flags from XSDs
+  const pos = makePositioner(text);
+  const diagnostics = [];
+  for (const tag of scanViewHelperTags(text)) {
+    const vh = lookupTag(tag.prefix, tag.name, text);
+    if (!vh) continue; // unknown ViewHelper — leave to the binary analyzer
+    const provided = new Set(tag.attrs.map(a => a.name));
+
+    for (const def of vh.attributes) {
+      if (def.required && !provided.has(def.name)) {
+        diagnostics.push({
+          range: { start: pos(tag.nameStart), end: pos(tag.nameEnd) },
+          severity: 2, // Warning
+          source: 'fluid-schema',
+          message: `Missing required attribute "${def.name}" on <${tag.prefix}:${tag.name}>.`,
+        });
+      }
+    }
+
+    for (const at of tag.attrs) {
+      if (at.value == null || at.dynamic) continue; // boolean attr or {expression}
+      const def = vh.attributes.find(d => d.name === at.name);
+      if (!def || !def.type) continue;
+      if (typeMismatch(def.type, at.value)) {
+        diagnostics.push({
+          range: { start: pos(at.valStart), end: pos(at.valEnd) },
+          severity: 1, // Error
+          source: 'fluid-schema',
+          message: `Attribute "${at.name}" expects ${friendlyType(def.type)}, got "${at.value}".`,
+        });
+      }
+    }
+  }
+  return diagnostics;
 }
 
 // ───────────────────────────── Configuration ───────────────────────────────
@@ -369,12 +509,19 @@ function onCompletion(params) {
     const typed = tagStart[2].toLowerCase();
     return tagsForPrefix(tagStart[1], text)
       .filter(t => t.tagName.toLowerCase().startsWith(typed))
-      .map(t => ({
-        label: t.name,
-        kind: 7, // Class (tag)
-        detail: 'Fluid ViewHelper',
-        documentation: { kind: 'markdown', value: descText(t.description) },
-      }));
+      .map(t => {
+        // Pre-fill required attributes as tabstops so the user must complete them.
+        const required = (t.attributes || []).filter(a => a.required);
+        const snippet = t.name + required.map((a, i) => ` ${a.name}="$${i + 1}"`).join('');
+        return {
+          label: t.name,
+          kind: 7, // Class (tag)
+          detail: required.length ? `Fluid ViewHelper · ${required.length} required` : 'Fluid ViewHelper',
+          documentation: { kind: 'markdown', value: descText(t.description) },
+          insertText: snippet,
+          insertTextFormat: required.length ? 2 : 1, // snippet only when there are tabstops
+        };
+      });
   }
   return null;
 }
@@ -410,7 +557,13 @@ function onHover(params) {
       if (col >= start && col <= end) {
         const vh = lookupTag(p, n, text);
         const attr = vh && vh.attributes.find(a => a.name === m[1]);
-        if (attr) return { contents: { kind: 'markdown', value: `**${openTag} → ${attr.name}**\n\n${descText(attr.description)}` } };
+        if (attr) {
+          const meta = [];
+          if (attr.type) meta.push(`type \`${friendlyType(attr.type)}\``);
+          meta.push(attr.required ? '**required**' : 'optional');
+          if (attr.default) meta.push(`default \`${attr.default}\``);
+          return { contents: { kind: 'markdown', value: `**${openTag} → ${attr.name}** — ${meta.join(' · ')}\n\n${descText(attr.description)}` } };
+        }
       }
     }
   }
@@ -481,10 +634,18 @@ function tryAnalyze(candidate, input) {
 function runDiagnostics(uri) {
   const text = documents.get(uri);
   if (text === undefined) return;
-  if (!config.features.liveTemplateAnalysis) {
-    notify('textDocument/publishDiagnostics', { uri, diagnostics: [] });
-    return;
+
+  // Static, instant validation from the XSD schema (types + required fields).
+  const diagnostics = validateSchema(text);
+
+  // Deeper analysis (parse errors / deprecations) via the project binary.
+  if (config.features.liveTemplateAnalysis) {
+    addBinaryDiagnostics(text, diagnostics);
   }
+  notify('textDocument/publishDiagnostics', { uri, diagnostics });
+}
+
+function addBinaryDiagnostics(text, diagnostics) {
   let result = null;
   if (binaryCache) result = tryAnalyze(binaryCache, text);
   if (!result) {
@@ -493,9 +654,8 @@ function runDiagnostics(uri) {
       if (data) { binaryCache = c; log(`using "${[c.command, ...c.args].join(' ')}" for analysis`); result = data; break; }
     }
   }
-  if (!result) { notify('textDocument/publishDiagnostics', { uri, diagnostics: [] }); return; }
+  if (!result) return;
 
-  const diagnostics = [];
   for (const err of result.errors) {
     const loc = err.templateLocation;
     const line = Math.max(0, Number((loc && loc.line) ?? 1) - 1);
@@ -516,7 +676,6 @@ function runDiagnostics(uri) {
       message: `${dep.message} (${dep.file} in line ${dep.line})`,
     });
   }
-  notify('textDocument/publishDiagnostics', { uri, diagnostics });
 }
 
 // ───────────────────────────── Boot ────────────────────────────────────────

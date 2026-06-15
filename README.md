@@ -70,12 +70,20 @@ spawned by `src/lib.rs` via Zed's Node) provides:
 - **Completion** — ViewHelper tag names (`<f:…>`) filtered by prefix, and the
   attributes of the ViewHelper you're inside.
 - **Hover** — Markdown documentation for ViewHelper tags and their attributes.
-- **Diagnostics** — live template analysis (errors + deprecations) by shelling
+- **Schema validation** (instant, no binary) — from the generated XSDs:
+  - **Type checking** — a literal attribute value that doesn't match its
+    declared type (`integer`, `boolean`, `float`) is flagged as an error, e.g.
+    `columns="abc"` on an integer attribute. Values containing `{expressions}`
+    are skipped (can't be checked statically).
+  - **Required attributes** — a ViewHelper missing a required attribute is
+    flagged (warning), and required attributes are **pre-filled as tabstops** on
+    tag completion (`<f:image` → `<f:image src="$1" …`) so you fill them in.
+- **Diagnostics** — deeper analysis (parse errors + deprecations) by shelling
   out to the project's Fluid/TYPO3 binary, ported from the VS Code extension:
   it tries (in order) configured paths → `ddev typo3 fluid:analyze` →
   `vendor/bin/typo3 fluid:analyze` → `ddev exec … fluid analyze` →
   `vendor/bin/fluid analyze`, all with `--json --stdin`. If no binary is found
-  it silently provides no diagnostics (completion/hover still work).
+  it silently provides no binary diagnostics (schema validation still works).
 
 ### ViewHelper data: project-dynamic (incl. custom ViewHelpers)
 
