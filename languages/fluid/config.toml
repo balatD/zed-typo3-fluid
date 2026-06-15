@@ -1,12 +1,19 @@
 name = "Fluid"
-grammar = "html"
+grammar = "fluid"
 
 # Zed's path_suffixes do NOT support globs or directory matching, so the VS Code
 # extension's directory-based detection (Resources/Private/Templates/**/*.html ...)
-# cannot be reproduced. We reliably auto-detect the explicit Fluid suffixes only.
-# Plain *.html files inside TYPO3 template directories must be switched to "Fluid"
-# manually (command palette: "language selector") or renamed to *.fluid.html.
+# cannot be reproduced. Real TYPO3 templates are plain *.html, which we must NOT
+# claim globally (it would hijack every HTML file). So detection is two-pronged:
+#   1. explicit Fluid suffixes below, and
+#   2. first_line_pattern — sniff a Fluid signal on line 1 of any file.
 path_suffixes = ["fluid.html", "fluid.htm", "fluid.txt", "fluid"]
+
+# Auto-detect plain *.html templates whose first line carries a Fluid marker:
+#   {namespace ...}   data-namespace-typo3-fluid   xmlns:f="http://typo3.org/..."
+#   <f:layout .../>   <f:section ...>   or any namespaced ViewHelper tag <x:y>
+# Templates/partials that open with plain HTML still need a manual language switch.
+first_line_pattern = '\{namespace\s|data-namespace-typo3-fluid|xmlns:[a-zA-Z]+="http://typo3\.org|<f:[a-z]|<[a-zA-Z][a-zA-Z0-9]*:[a-zA-Z]'
 
 autoclose_before = ">})"
 block_comment = { start = "<!--", prefix = "", end = "-->", tab_size = 0 }

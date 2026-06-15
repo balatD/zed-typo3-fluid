@@ -6,9 +6,10 @@ language. It is a port of the
 [FriendsOfTYPO3/vscode-fluid-language](https://github.com/FriendsOfTYPO3/vscode-fluid-language)
 VS Code extension.
 
-> **Status: Phase 1 + 2 (highlighting + snippets).** ViewHelper autocomplete,
-> inline documentation and live template analysis (Phase 3, a language server)
-> are not yet implemented. See [Roadmap](#roadmap).
+> **Status: highlighting + snippets**, powered by a dedicated
+> [`tree-sitter-fluid`](../tree-sitter-fluid) grammar. ViewHelper autocomplete,
+> inline documentation and live template analysis (a language server) are not yet
+> implemented. See [Roadmap](#roadmap).
 
 ## Why this isn't a straight port
 
@@ -17,41 +18,45 @@ be copied file-for-file:
 
 | Concern | VS Code extension | Zed |
 | --- | --- | --- |
-| Syntax highlighting | TextMate grammar (`.tmLanguage`) | **Tree-sitter** only |
+| Syntax highlighting | TextMate grammar (`.tmLanguage`) | **Tree-sitter** only → new grammar |
 | ViewHelper completion / docs | VS Code **HTML Custom Data** | no equivalent → needs an LSP |
 | Live analysis | TS client runs `fluid`/`typo3` PHP binary | needs an LSP |
 | Snippets | `snippets/*.json` | same format ✅ |
-| File detection | globs over `Resources/Private/**` dirs | `path_suffixes` only, **no globs** |
+| File detection | globs over `Resources/Private/**` dirs | `path_suffixes` + `first_line_pattern`, **no globs** |
 
-This extension uses the official **tree-sitter HTML** grammar as the base parse
-(the same commit Zed's built-in HTML extension pins) and specializes Fluid
-constructs through Tree-sitter highlight queries.
+Highlighting is driven by a purpose-built **`tree-sitter-fluid`** grammar (in the
+sibling `tree-sitter-fluid/` repo) that extends tree-sitter-html and actually
+parses Fluid syntax — so `{…}` expressions, inline ViewHelpers, operators, casts
+and arrays are tokenized, not just the surrounding HTML.
 
 ## Features
 
-- HTML syntax highlighting (elements, attributes, comments, entities).
-- Fluid **ViewHelper tags** (`<f:if>`, `<f:for>`, `<v:…>`, `<core:icon>`, custom
-  `vendor:…` namespaces) highlighted as functions.
-- Fluid **namespace declarations** (`xmlns:f`, `data-namespace-typo3-fluid`).
-- Fluid **expression attribute values** (e.g. `each="{items}"`) highlighted as a
-  visual cue.
-- Embedded **CSS** (`<style>`, `style="…"`) and **JavaScript** (`<script>`,
-  `on*` handlers).
+- Full HTML highlighting (elements, attributes, comments, entities, embedded
+  CSS/JS).
+- Fluid **ViewHelper tags** — `<f:if>`, `<f:format.raw>`, `<v:…>`, `<core:icon>`,
+  custom `vendor:…` namespaces — as functions.
+- Fluid **`{expressions}`**, tokenized everywhere (text **and** attribute values):
+  - object accessors `{user.name}` → variables,
+  - inline ViewHelpers & pipelines `{foo -> f:format.raw()}` → functions,
+  - named arguments / array keys → properties,
+  - operators, ternaries, `as` casts, booleans/`_all`, numbers, strings.
+- **`{namespace …}`** declarations, `xmlns:f`, `data-namespace-typo3-fluid`.
+- **Dynamic tag names** `<{headline}>…</{headline}>`.
 - 26 **snippets** for core and TYPO3 ViewHelpers (`f:for`, `f:if`, `f:translate`,
   `f:image`, `f:render.*`, …).
 
 ### Known limitations
 
-- **Interior of `{…}` expressions is not separately tokenized.** Without a
-  dedicated Fluid grammar, the HTML grammar treats template text as opaque, so
-  inline ViewHelpers and object accessors inside `{…}` in text nodes are not
-  sub-highlighted. Tag-level ViewHelpers and single-expression attribute values
-  *are* highlighted. (A dedicated `tree-sitter-fluid` grammar would lift this —
-  see Roadmap.)
-- **No directory-based file detection.** Zed `path_suffixes` cannot glob, so only
-  the explicit Fluid suffixes auto-detect. Plain `*.html` files inside
-  `Resources/Private/Templates/` (etc.) must be switched to the **Fluid**
-  language manually, or renamed to `*.fluid.html`.
+- **File detection.** Zed `path_suffixes` can't glob TYPO3's
+  `Resources/Private/Templates/**` directories. Detection is therefore: the
+  explicit Fluid suffixes (`*.fluid.html`, `*.fluid`, …) **plus** a
+  `first_line_pattern` that sniffs `{namespace`, `data-namespace-typo3-fluid`,
+  `xmlns:f`, or a `<f:…>`/`<x:y>` tag on line 1. Templates that open with plain
+  HTML still need a manual language switch (command palette → language selector).
+- **Grammar edge cases** (localized, non-fatal — the rest of the file still
+  highlights): same-quote nesting inside an attribute value
+  (`value='{ … 'x': … }'`) and the interior of string literals are not fully
+  tokenized.
 
 ## File detection
 
