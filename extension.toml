@@ -11,7 +11,7 @@ repository = "https://github.com/balatD/zed-typo3-fluid"
 # and dynamic tag names. Hosted at github.com/balatD/tree-sitter-fluid.
 [grammars.fluid]
 repository = "https://github.com/balatD/tree-sitter-fluid"
-commit = "ee97bd712920cad660475f19f16d85204c0d3c3d"
+commit = "917d26e213d4ad1410ba576302a5b49e82088d01"
 
 # Bundled dependency-free Node language server (server/server.js): ViewHelper
 # completion, hover docs and live diagnostics. Spawned via src/lib.rs.
