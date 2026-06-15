@@ -118,15 +118,20 @@ function schemaDir() { return path.join(rootPath, 'var', 'transient'); }
 
 function loadXsdDir() {
   const dir = schemaDir();
-  let files = [];
+  // var/transient is a general TYPO3 cache dir — read only its top level and
+  // only the `schema_*.xsd` files the generator writes (no recursive scan).
+  let entries = [];
   try {
-    files = fs.readdirSync(dir, { recursive: true }).filter(f => String(f).endsWith('.xsd'));
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(e => e.isFile() && /\.xsd$/i.test(e.name));
   } catch (_) { return false; }
-  if (!files.length) return false;
+  if (!entries.length) return false;
   const byUrl = new Map();
-  for (const f of files) {
+  for (const e of entries.slice(0, 500)) {
     try {
-      const parsed = parseXsd(fs.readFileSync(path.join(dir, String(f)), 'utf8'));
+      const file = path.join(dir, e.name);
+      if (fs.statSync(file).size > 8 * 1024 * 1024) continue; // guard against runaway files
+      const parsed = parseXsd(fs.readFileSync(file, 'utf8'));
       if (parsed && parsed.tags.size) byUrl.set(parsed.url, parsed.tags);
     } catch (_) { /* skip unreadable/odd files */ }
   }
@@ -146,10 +151,14 @@ function generateSchemas() {
     if (i >= candidates.length) { schemaGenerating = false; log('no typo3 binary found to generate Fluid schemas'); return; }
     const c = candidates[i++];
     let child;
-    try { child = spawn(c.command, c.args, { cwd: rootPath }); }
+    // Ignore the child's stdio so a chatty bootstrap can't fill a pipe and hang,
+    // and never share our stdout (which carries the LSP stream).
+    try { child = spawn(c.command, c.args, { cwd: rootPath, stdio: 'ignore' }); }
     catch (_) { return tryNext(); }
-    child.on('error', () => tryNext());
+    const timer = setTimeout(() => { try { child.kill(); } catch (_) {} }, 180000);
+    child.on('error', () => { clearTimeout(timer); tryNext(); });
     child.on('close', (code) => {
+      clearTimeout(timer);
       if (code === 0 && loadXsdDir()) {
         schemaGenerating = false;
         log(`generated schemas via "${[c.command, ...c.args].join(' ')}"`);
@@ -422,7 +431,12 @@ process.stdin.on('data', (chunk) => {
     buffer = buffer.slice(start + len);
     let msg;
     try { msg = JSON.parse(body); } catch (_) { continue; }
-    handle(msg);
+    try {
+      handle(msg);
+    } catch (e) {
+      log(`handler error (${msg && msg.method}): ${(e && e.stack) || e}`);
+      if (msg && msg.id !== undefined) reply(msg.id, null); // never leave a request hanging
+    }
   }
 });
 
@@ -690,41 +704,58 @@ function buildCandidates() {
   return candidates;
 }
 
-function tryAnalyze(candidate, input) {
-  try {
-    const proc = spawnSync(candidate.command, candidate.args, { input, cwd: rootPath, maxBuffer: 16 * 1024 * 1024 });
-    if (!proc.stdout) return null;
-    const data = JSON.parse(proc.stdout.toString());
-    if (data && Array.isArray(data.errors) && Array.isArray(data.deprecations)) return data;
-  } catch (_) { /* not this binary */ }
-  return null;
-}
-
 function runDiagnostics(uri) {
   const text = documents.get(uri);
   if (text === undefined) return;
 
   // Static, instant validation from the XSD schema (types + required fields).
-  const diagnostics = validateSchema(text);
+  const base = validateSchema(text);
+  notify('textDocument/publishDiagnostics', { uri, diagnostics: base });
 
-  // Deeper analysis (parse errors / deprecations) via the project binary.
-  if (config.features.liveTemplateAnalysis) {
-    addBinaryDiagnostics(text, diagnostics);
-  }
-  notify('textDocument/publishDiagnostics', { uri, diagnostics });
+  // Parse-error/deprecation analysis runs asynchronously — the binary boots
+  // TYPO3 (multiple seconds) and must never block the LSP event loop.
+  if (config.features.liveTemplateAnalysis) analyzeAsync(uri, text, base);
 }
 
-function addBinaryDiagnostics(text, diagnostics) {
-  let result = null;
-  if (binaryCache) result = tryAnalyze(binaryCache, text);
-  if (!result) {
-    for (const c of buildCandidates()) {
-      const data = tryAnalyze(c, text);
-      if (data) { binaryCache = c; log(`using "${[c.command, ...c.args].join(' ')}" for analysis`); result = data; break; }
-    }
-  }
-  if (!result) return;
+const analyzingUris = new Set();
+function analyzeAsync(uri, text, baseDiagnostics) {
+  if (analyzingUris.has(uri)) return; // one analysis per file at a time
+  analyzingUris.add(uri);
+  const candidates = binaryCache ? [binaryCache] : buildCandidates();
+  let idx = 0;
+  const tryNext = () => {
+    if (idx >= candidates.length) { analyzingUris.delete(uri); return; }
+    const c = candidates[idx++];
+    let child;
+    try { child = spawn(c.command, c.args, { cwd: rootPath, stdio: ['pipe', 'pipe', 'ignore'] }); }
+    catch (_) { return tryNext(); }
+    let out = '';
+    child.on('error', () => tryNext());
+    child.stdout.on('data', (d) => {
+      out += d;
+      if (out.length > 16 * 1024 * 1024) { try { child.kill(); } catch (_) {} }
+    });
+    child.on('close', () => {
+      let data = null;
+      try {
+        const j = JSON.parse(out);
+        if (j && Array.isArray(j.errors) && Array.isArray(j.deprecations)) data = j;
+      } catch (_) { /* not a fluid analyzer */ }
+      if (!data) return tryNext();
+      if (binaryCache !== c) log(`using "${[c.command, ...c.args].join(' ')}" for analysis`);
+      binaryCache = c;
+      analyzingUris.delete(uri);
+      if (!documents.has(uri)) return; // file closed meanwhile
+      const merged = baseDiagnostics.slice();
+      mapAnalyzerResult(data, merged);
+      notify('textDocument/publishDiagnostics', { uri, diagnostics: merged });
+    });
+    try { child.stdin.end(text); } catch (_) { /* stdin may already be gone */ }
+  };
+  tryNext();
+}
 
+function mapAnalyzerResult(result, diagnostics) {
   for (const err of result.errors) {
     const loc = err.templateLocation;
     const line = Math.max(0, Number((loc && loc.line) ?? 1) - 1);
@@ -749,4 +780,5 @@ function addBinaryDiagnostics(text, diagnostics) {
 
 // ───────────────────────────── Boot ────────────────────────────────────────
 loadViewHelperData();
-process.on('uncaughtException', (e) => log(`uncaught: ${e && e.stack || e}`));
+process.on('uncaughtException', (e) => log(`uncaught: ${(e && e.stack) || e}`));
+process.on('unhandledRejection', (e) => log(`unhandled rejection: ${(e && e.stack) || e}`));
