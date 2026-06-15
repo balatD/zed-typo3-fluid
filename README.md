@@ -85,8 +85,8 @@ Adjust the globs if your sitepackage uses other directories.
 
 ## Language server
 
-A bundled, **dependency-free Node** language server (`server/server.js`,
-spawned by `src/lib.rs` via Zed's Node) provides:
+A **dependency-free Node** language server (`server/server.js`, downloaded from
+this repo's GitHub releases by `src/lib.rs` and run via Zed's Node) provides:
 
 - **Completion** — ViewHelper **tags** (`<f:…>`) and their attributes (multi-line
   tags supported, already-set attributes filtered out), plus **inline** calls

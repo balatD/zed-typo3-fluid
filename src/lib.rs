@@ -1,44 +1,96 @@
 //! Zed extension glue for TYPO3 Fluid.
 //!
-//! Spawns the bundled dependency-free Node language server
-//! (`server/server.js`) which provides ViewHelper completion, hover
-//! documentation and live template diagnostics. User settings under
+//! Downloads the dependency-free Node language server (`server.js` +
+//! `viewhelpers.json`, shipped as a `.tar.gz` asset on this repo's GitHub
+//! releases) and runs it via Zed's Node. User settings under
 //! `lsp."fluid-language-server".settings` are forwarded to the server.
 
 use zed_extension_api::{
-    self as zed, serde_json::Value, settings::LspSettings, Command, LanguageServerId, Result,
-    Worktree,
+    self as zed, serde_json::Value, settings::LspSettings, Command, DownloadedFileType,
+    GithubReleaseOptions, LanguageServerId, LanguageServerInstallationStatus, Result, Worktree,
 };
 
 const SERVER_NAME: &str = "fluid-language-server";
+const REPO: &str = "balatD/zed-typo3-fluid";
+const ASSET_NAME: &str = "fluid-language-server.tar.gz";
 
-struct FluidExtension;
+struct FluidExtension {
+    cached_server_path: Option<String>,
+}
+
+impl FluidExtension {
+    /// Resolve an absolute path to `server.js`, downloading + extracting the
+    /// release asset into the extension work dir on first use (or after an
+    /// update). The asset contains `server.js` and `viewhelpers.json`.
+    fn server_script_path(&mut self, language_server_id: &LanguageServerId) -> Result<String> {
+        if let Some(path) = &self.cached_server_path {
+            if std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+                return Ok(path.clone());
+            }
+        }
+
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &LanguageServerInstallationStatus::CheckingForUpdate,
+        );
+        let release = zed::latest_github_release(
+            REPO,
+            GithubReleaseOptions { require_assets: true, pre_release: false },
+        )?;
+        let asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == ASSET_NAME)
+            .ok_or_else(|| format!("release {} has no asset {ASSET_NAME}", release.version))?;
+
+        let version_dir = format!("{SERVER_NAME}-{}", release.version);
+        let server_path = format!("{version_dir}/server.js");
+
+        if !std::fs::metadata(&server_path).is_ok_and(|m| m.is_file()) {
+            zed::set_language_server_installation_status(
+                language_server_id,
+                &LanguageServerInstallationStatus::Downloading,
+            );
+            zed::download_file(&asset.download_url, &version_dir, DownloadedFileType::GzipTar)
+                .map_err(|e| format!("failed to download {ASSET_NAME}: {e}"))?;
+
+            // Drop older downloaded versions.
+            if let Ok(entries) = std::fs::read_dir(".") {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name.starts_with(&format!("{SERVER_NAME}-")) && name != version_dir {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+
+        self.cached_server_path = Some(server_path.clone());
+        Ok(server_path)
+    }
+}
 
 impl zed::Extension for FluidExtension {
     fn new() -> Self {
-        FluidExtension
+        FluidExtension { cached_server_path: None }
     }
 
     fn language_server_command(
         &mut self,
-        _language_server_id: &LanguageServerId,
+        language_server_id: &LanguageServerId,
         _worktree: &Worktree,
     ) -> Result<Command> {
-        // Zed does not copy loose extension files (server/) into the work dir,
-        // and the wasm sandbox can only read its work dir (== current_dir).
-        // So we embed the server + ViewHelper data at compile time and
-        // materialize them into the work dir on startup. server.js reads
-        // viewhelpers.json from its own __dirname, so both go side by side.
-        let dir =
+        let server_path = self.server_script_path(language_server_id)?;
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &LanguageServerInstallationStatus::None,
+        );
+
+        // The language server process' cwd is the worktree root, not the
+        // extension dir, so the script path must be absolute.
+        let extension_dir =
             std::env::current_dir().map_err(|e| format!("cannot resolve work dir: {e}"))?;
-        let server = dir.join("fluid-language-server.js");
-        std::fs::write(&server, include_str!("../server/server.js"))
-            .map_err(|e| format!("cannot write language server: {e}"))?;
-        std::fs::write(
-            dir.join("viewhelpers.json"),
-            include_str!("../server/viewhelpers.json"),
-        )
-        .map_err(|e| format!("cannot write ViewHelper data: {e}"))?;
+        let server = extension_dir.join(&server_path);
 
         Ok(Command {
             command: zed::node_binary_path()?,
