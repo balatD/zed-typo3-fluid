@@ -3,7 +3,7 @@ name = "TYPO3 Fluid"
 description = "TYPO3 Fluid: highlighting, snippets and a language server (completion, hover, diagnostics)."
 version = "0.0.1"
 schema_version = 1
-authors = ["Dragan Balatinac <itservice@cp-compartner.de>"]
+authors = ["Dragan Balatinac <dragan@balatinac.com>"]
 repository = "https://github.com/balatD/zed-typo3-fluid"
 
 # Dedicated tree-sitter grammar for Fluid: extends tree-sitter-html with
@@ -11,7 +11,7 @@ repository = "https://github.com/balatD/zed-typo3-fluid"
 # and dynamic tag names. Hosted at github.com/balatD/tree-sitter-fluid.
 [grammars.fluid]
 repository = "https://github.com/balatD/tree-sitter-fluid"
-commit = "917d26e213d4ad1410ba576302a5b49e82088d01"
+commit = "621b036e246634664d165e9f4fcd6d54df4f60e4"
 
 # Bundled dependency-free Node language server (server/server.js): ViewHelper
 # completion, hover docs and live diagnostics. Spawned via src/lib.rs.
