@@ -83,10 +83,11 @@ function parseXsd(xml) {
     const beforeAttrs = body.split(/<xsd:attribute\b/)[0];
     const elDoc = firstCdataDoc(beforeAttrs);
     const attributes = [];
-    const attrRe = /<xsd:attribute\b([^>]*)>([\s\S]*?)<\/xsd:attribute>|<xsd:attribute\b([^>]*)\/>/g;
+    // Match the self-closing form first so it can't be swallowed by the paired form.
+    const attrRe = /<xsd:attribute\b([^>]*?)\/>|<xsd:attribute\b([^>]*)>([\s\S]*?)<\/xsd:attribute>/g;
     for (const at of matchAll(body, attrRe)) {
-      const attrTag = at[1] || at[3] || '';
-      const inner = at[2] || '';
+      const attrTag = at[1] || at[2] || '';
+      const inner = at[3] || '';
       const nm = /\bname\s*=\s*"([^"]+)"/.exec(attrTag);
       if (!nm) continue;
       const ty = /\btype\s*=\s*"([^"]+)"/.exec(attrTag);
@@ -159,10 +160,16 @@ function generateSchemas() {
     child.on('error', () => { clearTimeout(timer); tryNext(); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code === 0 && loadXsdDir()) {
+      // A clean exit means this binary ran the generator — don't re-run the same
+      // (multi-second) generation through the remaining candidates.
+      if (code === 0) {
         schemaGenerating = false;
-        log(`generated schemas via "${[c.command, ...c.args].join(' ')}"`);
-        for (const uri of documents.keys()) runDiagnostics(uri);
+        if (loadXsdDir()) {
+          log(`generated schemas via "${[c.command, ...c.args].join(' ')}"`);
+          for (const uri of documents.keys()) runDiagnostics(uri);
+        } else {
+          log('schema generation ran but produced no parseable namespaces');
+        }
       } else {
         tryNext();
       }
@@ -248,7 +255,10 @@ function typeMismatch(xsdType, value) {
   switch (String(xsdType).replace(/^xsd:/, '')) {
     case 'integer': return !/^[+-]?\d+$/.test(v);
     case 'float': case 'double': return !/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(v);
-    case 'boolean': return !/^(0|1|true|false)$/i.test(v);
+    // Booleans are intentionally NOT validated: Fluid treats any non-empty
+    // literal as truthy and accepts NULL/yes/no/on/off (incl. documented
+    // defaults like default="NULL"), so there is no reliable "invalid" literal.
+    case 'boolean': return false;
     default: return false; // string / anySimpleType / unknown → accept anything
   }
 }
@@ -402,6 +412,7 @@ function applySettings(settings) {
     if (typeof s.features.generateViewHelperSchema === 'boolean') config.features.generateViewHelperSchema = s.features.generateViewHelperSchema;
   }
   binaryCache = null; // re-resolve binary after config change
+  ddevResolved = undefined;
 }
 
 // ───────────────────────────── JSON-RPC plumbing ───────────────────────────
@@ -435,10 +446,17 @@ process.stdin.on('data', (chunk) => {
       handle(msg);
     } catch (e) {
       log(`handler error (${msg && msg.method}): ${(e && e.stack) || e}`);
-      if (msg && msg.id !== undefined) reply(msg.id, null); // never leave a request hanging
+      // Never leave a request hanging: reply with a JSON-RPC error.
+      if (msg && msg.id !== undefined) {
+        send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: String((e && e.message) || e) } });
+      }
     }
   }
 });
+
+// Exit if the client closes the input stream (avoids an orphaned process).
+process.stdin.on('close', () => process.exit(shuttingDown ? 0 : 1));
+process.stdin.on('error', () => process.exit(1));
 
 function uriToPath(uri) {
   if (!uri) return '';
@@ -446,25 +464,36 @@ function uriToPath(uri) {
 }
 
 // ───────────────────────────── Message handling ────────────────────────────
+let shuttingDown = false;
 function handle(msg) {
+  // Document/text-document requests must carry params.textDocument.
+  if (/^textDocument\//.test(msg.method) && (!msg.params || !msg.params.textDocument)) {
+    if (msg.id !== undefined) reply(msg.id, null);
+    return;
+  }
   switch (msg.method) {
     case 'initialize': return onInitialize(msg);
     case 'initialized': return;
-    case 'shutdown': return reply(msg.id, null);
-    case 'exit': return process.exit(0);
+    case 'shutdown': shuttingDown = true; return reply(msg.id, null);
+    case 'exit': return process.exit(shuttingDown ? 0 : 1);
     case 'workspace/didChangeConfiguration':
       applySettings(msg.params && msg.params.settings);
+      // Settings (bin paths, feature flags) arrive after initialize, so apply
+      // their effects now: (re)generate schemas if needed and refresh diagnostics.
+      if (config.features.generateViewHelperSchema && !hasProjectData()) generateSchemas();
+      for (const uri of documents.keys()) runDiagnostics(uri);
       return;
     case 'textDocument/didOpen': {
       const d = msg.params.textDocument;
-      documents.set(d.uri, d.text);
+      documents.set(d.uri, d.text || '');
       runDiagnostics(d.uri);
       return;
     }
     case 'textDocument/didChange': {
       const uri = msg.params.textDocument.uri;
       const changes = msg.params.contentChanges;
-      if (changes && changes.length) documents.set(uri, changes[changes.length - 1].text);
+      const last = changes && changes.length ? changes[changes.length - 1] : null;
+      if (last && typeof last.text === 'string') documents.set(uri, last.text);
       scheduleDiagnostics(uri);
       return;
     }
@@ -488,7 +517,7 @@ function onInitialize(msg) {
   reply(msg.id, {
     capabilities: {
       textDocumentSync: 1, // full
-      completionProvider: { triggerCharacters: ['<', ':', ' ', '.'] },
+      completionProvider: { triggerCharacters: ['<', ':', ' ', '.', '{'] },
       hoverProvider: true,
       documentOnTypeFormattingProvider: { firstTriggerCharacter: '>' },
     },
@@ -514,12 +543,33 @@ function onCompletion(params) {
   if (text === undefined) return null;
   const line = lineUpToCursor(text, params.position);
 
-  // Inside an open ViewHelper tag → complete its attributes.
-  const openTag = /<([a-z][a-z0-9_]*):([a-z0-9.]+)\b[^<>]*$/i.exec(line);
-  if (openTag && /[\s]$|[\s][a-z0-9-]*$/i.test(line)) {
-    const vh = lookupTag(openTag[1], openTag[2], text);
+  // 1. Inline ViewHelper call: `{f:` or `value -> f:` → name(arg: …) snippet.
+  //    (Disjoint from tag completion: inline is preceded by `{` or `->`.)
+  const inline = /(?:\{|->\s*)([a-z][a-z0-9_]*):([a-z0-9.]*)$/i.exec(line);
+  if (inline) {
+    const typed = inline[2].toLowerCase();
+    return tagsForPrefix(inline[1], text)
+      .filter(t => t.tagName.toLowerCase().startsWith(typed))
+      .map(t => {
+        const required = (t.attributes || []).filter(a => a.required);
+        const args = required.map((a, i) => `${a.name}: $${i + 1}`).join(', ');
+        return {
+          label: t.name,
+          kind: 3, // Function
+          detail: 'Fluid ViewHelper (inline)',
+          documentation: { kind: 'markdown', value: descText(t.description) },
+          insertText: `${t.name}(${args})`,
+          insertTextFormat: 2,
+        };
+      });
+  }
+
+  // 2. Inside an open ViewHelper tag → complete its attributes (multi-line aware).
+  const ctx = openTagContext(text, params.position);
+  if (ctx && /[\s]$|[\s][a-z0-9-]*$/i.test(ctx.slice) && !/=\s*["'][^"']*$/.test(ctx.slice)) {
+    const vh = lookupTag(ctx.prefix, ctx.name, text);
     if (vh && Array.isArray(vh.attributes)) {
-      const used = new Set((line.match(/([a-z0-9-]+)=/gi) || []).map(s => s.slice(0, -1)));
+      const used = new Set((ctx.slice.match(/([a-z0-9-]+)=/gi) || []).map(s => s.slice(0, -1)));
       return vh.attributes.filter(a => !used.has(a.name)).map(a => ({
         label: a.name,
         kind: 5, // Field
@@ -532,7 +582,7 @@ function onCompletion(params) {
     }
   }
 
-  // Typing a tag name: `<f:`, `<f:fo`, `<my:teas` …
+  // 3. Typing a tag name: `<f:`, `<f:fo`, `<my:teas` …
   const tagStart = /<([a-z0-9_]+):([a-z0-9.]*)$/i.exec(line);
   if (tagStart) {
     const typed = tagStart[2].toLowerCase();
@@ -563,22 +613,23 @@ function onHover(params) {
   const line = lines[params.position.line] || '';
   const col = params.position.character;
 
-  // Hover over a ViewHelper tag name: <ns:name or </ns:name
-  const tagRe = /<\/?([a-z][a-z0-9_]*):([a-z0-9.]+)/gi;
-  for (const m of matchAll(line, tagRe)) {
-    const full = `${m[1]}:${m[2]}`;
-    const nameStart = m.index + m[0].indexOf(m[1]);
+  // Hover over a ViewHelper tag name (<ns:name, </ns:name) or an inline call
+  // ({ns:name(…)}, value -> ns:name()). Both resolve via lookupTag.
+  const nameRe = /([<{(,]|->\s*|^|\s)\/?([a-z][a-z0-9_]*):([a-z0-9.]+)/gi;
+  for (const m of matchAll(line, nameRe)) {
+    const full = `${m[2]}:${m[3]}`;
+    const nameStart = m.index + m[0].length - full.length;
     const nameEnd = nameStart + full.length;
     if (col >= nameStart && col <= nameEnd) {
-      const vh = lookupTag(m[1], m[2], text);
+      const vh = lookupTag(m[2], m[3], text);
       if (vh) return { contents: { kind: 'markdown', value: `**${full}**\n\n${descText(vh.description)}` } };
     }
   }
 
   // Hover over an attribute name inside a known ViewHelper tag.
-  const openTag = lastOpenTagBefore(lines, params.position);
-  if (openTag && openTag.includes(':')) {
-    const [p, n] = [openTag.slice(0, openTag.indexOf(':')), openTag.slice(openTag.indexOf(':') + 1)];
+  const ctxTag = openTagContext(text, params.position);
+  if (ctxTag) {
+    const p = ctxTag.prefix, n = ctxTag.name;
     const attrRe = /([a-z][a-z0-9-]*)\s*=/gi;
     for (const m of matchAll(line, attrRe)) {
       const start = m.index;
@@ -591,7 +642,7 @@ function onHover(params) {
           if (attr.type) meta.push(`type \`${friendlyType(attr.type)}\``);
           meta.push(attr.required ? '**required**' : 'optional');
           if (attr.default) meta.push(`default \`${attr.default}\``);
-          return { contents: { kind: 'markdown', value: `**${openTag} → ${attr.name}** — ${meta.join(' · ')}\n\n${descText(attr.description)}` } };
+          return { contents: { kind: 'markdown', value: `**${p}:${n} → ${attr.name}** — ${meta.join(' · ')}\n\n${descText(attr.description)}` } };
         }
       }
     }
@@ -601,18 +652,21 @@ function onHover(params) {
 
 function* matchAll(str, re) { let m; while ((m = re.exec(str)) !== null) yield m; }
 
-function lastOpenTagBefore(lines, position) {
-  // Scan backwards from the cursor for an unclosed `<ns:name` tag.
-  let buf = '';
-  for (let i = position.line; i >= 0 && i > position.line - 50; i--) {
-    const seg = i === position.line ? lines[i].slice(0, position.character) : lines[i];
-    buf = seg + '\n' + buf;
+// Resolve the unclosed `<ns:name …` tag the cursor sits inside (multi-line),
+// returning its prefix, name and the `<`-to-cursor slice (for attribute scans).
+function openTagContext(text, position) {
+  const lines = text.split(/\r\n|\r|\n/);
+  let buf = lines[position.line] ? lines[position.line].slice(0, position.character) : '';
+  for (let i = position.line - 1; i >= 0 && i > position.line - 50; i--) {
+    buf = lines[i] + '\n' + buf;
   }
   const lastLt = buf.lastIndexOf('<');
   const lastGt = buf.lastIndexOf('>');
   if (lastLt === -1 || lastLt < lastGt) return null;
-  const m = /^<\/?([a-z][a-z0-9_]*:[a-z0-9.]+)/i.exec(buf.slice(lastLt));
-  return m ? m[1] : null;
+  const slice = buf.slice(lastLt);
+  const m = /^<\/?([a-z][a-z0-9_]*):([a-z0-9.]+)/i.exec(slice);
+  if (!m) return null;
+  return { prefix: m[1], name: m[2], slice };
 }
 
 // ───────────────────── Auto-close tags (on typing `>`) ──────────────────────
@@ -623,7 +677,12 @@ const VOID_ELEMENTS = new Set([
 
 function posToOffset(text, position) {
   let line = 0, i = 0;
-  while (line < position.line && i < text.length) { if (text[i] === '\n') line++; i++; }
+  while (line < position.line && i < text.length) {
+    const c = text[i];
+    if (c === '\r') { i += text[i + 1] === '\n' ? 2 : 1; line++; }
+    else if (c === '\n') { i++; line++; }
+    else i++;
+  }
   return i + position.character;
 }
 
@@ -676,11 +735,15 @@ function scheduleDiagnostics(uri) {
   diagTimer = setTimeout(() => runDiagnostics(uri), 300);
 }
 
+let ddevResolved; // memoized; reset on config change (applySettings)
 function ddevAvailable() {
   if (!config.bin.useDdevIfAvailable) return '';
   if (!fs.existsSync(path.join(rootPath, '.ddev'))) return '';
-  const r = spawnSync('which', ['ddev'], { shell: true });
-  return r.stdout ? r.stdout.toString().trim() : '';
+  if (ddevResolved === undefined) {
+    const r = spawnSync('which', ['ddev']);
+    ddevResolved = r.stdout ? r.stdout.toString().trim() : '';
+  }
+  return ddevResolved;
 }
 
 function buildCandidates() {

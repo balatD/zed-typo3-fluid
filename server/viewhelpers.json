@@ -1,5 +1,5 @@
 {
-  "_comment": "Curated seed of common TYPO3 Fluid ViewHelpers in VS Code HTML custom-data shape. Replace/extend with the full set generated from a real project via the PHP HtmlCustomDataGenerator (see README, Phase 3).",
+  "_comment": "Static offline-fallback seed of common TYPO3 Fluid ViewHelpers (VS Code HTML custom-data shape; the server reads tags[].name, .description and attributes[].name/.description). Project-specific and custom ViewHelpers are discovered at runtime by running `typo3 fluid:schema:generate` and parsing the resulting XSDs under var/transient/ (see README) — this file is only used when that is unavailable. To extend the fallback, add more tags in the same shape.",
   "version": 1.1,
   "tags": [
     {

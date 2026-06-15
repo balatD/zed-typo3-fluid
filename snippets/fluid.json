@@ -91,7 +91,7 @@
     },
     "image": {
         "prefix": ["f:image", "fimage"],
-        "body": ["<f:image image=\"{${1:image}}\" width=\"${2:200}\" />"],
+        "body": ["<f:image image=\"{${1:image}}\" width=\"${2:200}\" alt=\"${3:}\" />"],
         "description": "TYPO3 f:image"
     },
     "resource URI (inline syntax)": {

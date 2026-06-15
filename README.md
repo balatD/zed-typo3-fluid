@@ -67,9 +67,12 @@ Auto-detected suffixes: `*.fluid.html`, `*.fluid.htm`, `*.fluid.txt`, `*.fluid`.
 A bundled, **dependency-free Node** language server (`server/server.js`,
 spawned by `src/lib.rs` via Zed's Node) provides:
 
-- **Completion** — ViewHelper tag names (`<f:…>`) filtered by prefix, and the
-  attributes of the ViewHelper you're inside.
-- **Hover** — Markdown documentation for ViewHelper tags and their attributes.
+- **Completion** — ViewHelper **tags** (`<f:…>`) and their attributes (multi-line
+  tags supported, already-set attributes filtered out), plus **inline** calls
+  (`{f:…}`, `value -> f:…`) completed as `name(arg: …)`. Required attributes are
+  pre-filled as tabstops.
+- **Hover** — Markdown documentation for ViewHelper tags, inline calls, and their
+  attributes (with type / required / default).
 - **Auto-close tags** — typing `>` to finish a start tag inserts the matching
   close tag (`<f:for …>` → `</f:for>`), with the cursor left in between.
   Self-closing tags (`<f:image …/>`), void HTML elements (`<br>`) and `>`
@@ -142,21 +145,28 @@ Configure via Zed settings (`lsp."fluid-language-server".settings`):
 
 ## Install (development)
 
-1. Clone this repo (and the sibling `tree-sitter-fluid` repo the grammar points
-   at).
+1. Clone the grammar repo `tree-sitter-fluid`, then point `extension.toml` at it:
+   set `[grammars.fluid].repository` to `file:///absolute/path/to/tree-sitter-fluid`
+   (the committed value is the author's path — edit it to match your checkout) and
+   ensure the pinned `commit` exists locally. For publishing this becomes a public
+   GitHub URL — see [PUBLISHING.md](PUBLISHING.md).
 2. In Zed: **Extensions → Install Dev Extension**, then select this directory.
    Zed builds the grammar and the Rust extension (first build takes a moment).
 3. Open a file from `test/fixtures/` (e.g. `tag-viewhelpers.fluid.html`) and
    confirm highlighting. Type `f:for` + <kbd>Tab</kbd> for a snippet; type `<f:`
-   for completion; hover a `<f:…>` tag for docs.
+   or `{f:` for completion; hover a ViewHelper for docs.
 4. For logs, launch Zed with `zed --foreground`.
+
+## Publishing
+
+See [PUBLISHING.md](PUBLISHING.md). The one hard blocker is hosting the grammar
+on a public GitHub URL (Zed's registry cannot build a local `file://` grammar).
 
 ## Roadmap
 
-- **Inline-syntax completion** inside `{f:…()}` expressions (currently tag
-  syntax only, matching the source extension).
 - **Smarter schema refresh** — regenerate XSDs only when ViewHelper sources
   change, rather than once per server start.
+- **Value-set completion** — offer `{true}`/`{false}` for boolean attributes.
 - **Publish:** push `tree-sitter-fluid` to GitHub (swap the `file://` grammar URL
   for the GitHub URL) and submit to the Zed extension registry.
 

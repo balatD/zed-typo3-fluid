@@ -1,18 +1,22 @@
 id = "fluid"
 name = "TYPO3 Fluid"
-description = "Syntax highlighting and snippets for the TYPO3 Fluid templating language."
+description = "TYPO3 Fluid: highlighting, snippets and a language server (completion, hover, diagnostics)."
 version = "0.0.1"
 schema_version = 1
-authors = ["CP/COMPARTNER <itservice@cp-compartner.de>"]
-repository = "https://github.com/your-org/zed-typo3-fluid"
+authors = ["Dragan Balatinac <itservice@cp-compartner.de>"]
+repository = "https://github.com/balatD/zed-typo3-fluid"
 
 # Dedicated tree-sitter grammar for Fluid: extends tree-sitter-html with
 # {expressions}, inline ViewHelpers, pipelines, casts, arrays, {namespace ...}
-# and dynamic tag names. During local dev this points at a file:// checkout;
-# before publishing, push tree-sitter-fluid to GitHub and swap in that URL.
+# and dynamic tag names.
+#
+# PUBLISHING: this file:// path works for local dev only. Before submitting to
+# the Zed registry, push tree-sitter-fluid to https://github.com/balatD/tree-sitter-fluid
+# and change `repository` below to that URL (commit must exist on the remote).
+# See PUBLISHING.md.
 [grammars.fluid]
 repository = "file:///Users/draganbalatinac/Projects/private/tree-sitter-fluid"
-commit = "9f1a9f654d77f578d0b344d4549f5f32b67d8193"
+commit = "352c964c02cc82404407aff076736964f73578f1"
 
 # Bundled dependency-free Node language server (server/server.js): ViewHelper
 # completion, hover docs and live diagnostics. Spawned via src/lib.rs.

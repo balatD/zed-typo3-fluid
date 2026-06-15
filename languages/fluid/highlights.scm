@@ -20,7 +20,7 @@
 ; ── Fluid ViewHelper tags (later patterns win on overlap) ──────────────────
 ; <f:if>, <f:format.raw>, <v:page.menu>, <core:icon>, <my.vendor:widget>
 ((tag_name) @function
-  (#match? @function "^[A-Za-z][A-Za-z0-9*]*(\\.[A-Za-z0-9]+)*:[A-Za-z0-9.]+$"))
+  (#match? @function "^[A-Za-z_][A-Za-z0-9_*]*(\\.[A-Za-z0-9_]+)*:[A-Za-z0-9_.]+$"))
 
 ; Fluid namespace declarations: xmlns:f, data-namespace-typo3-fluid
 ((attribute_name) @keyword
@@ -42,7 +42,7 @@
 (operator) @operator
 
 (namespace_definition "namespace" @keyword)
-(namespace) @namespace
+(namespace) @variable
 (php_class) @type
 (cast "as" @keyword)
 (pipe "->" @operator)
