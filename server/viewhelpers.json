@@ -1,0 +1,221 @@
+{
+  "_comment": "Curated seed of common TYPO3 Fluid ViewHelpers in VS Code HTML custom-data shape. Replace/extend with the full set generated from a real project via the PHP HtmlCustomDataGenerator (see README, Phase 3).",
+  "version": 1.1,
+  "tags": [
+    {
+      "name": "f:if",
+      "description": { "kind": "markdown", "value": "Conditional rendering. Renders the `then` child (or `f:then`) when `condition` evaluates truthy, otherwise the `f:else` child." },
+      "attributes": [
+        { "name": "condition", "description": { "kind": "markdown", "value": "Condition to evaluate. Supports comparisons (`==`, `>`, `<`), logic (`&&`, `||`) and booleans." } },
+        { "name": "then", "description": { "kind": "markdown", "value": "Value rendered when the condition is true (inline alternative to `f:then`)." } },
+        { "name": "else", "description": { "kind": "markdown", "value": "Value rendered when the condition is false (inline alternative to `f:else`)." } }
+      ]
+    },
+    { "name": "f:then", "description": { "kind": "markdown", "value": "The branch of an `f:if` rendered when the condition is true." }, "attributes": [] },
+    {
+      "name": "f:else",
+      "description": { "kind": "markdown", "value": "The branch of an `f:if` rendered when the condition is false. Supports `if` for else-if chains." },
+      "attributes": [ { "name": "if", "description": { "kind": "markdown", "value": "Optional condition for an else-if branch." } } ]
+    },
+    {
+      "name": "f:for",
+      "description": { "kind": "markdown", "value": "Loops over an array/iterable, rendering its children for each item." },
+      "attributes": [
+        { "name": "each", "description": { "kind": "markdown", "value": "The array/iterable to loop over." } },
+        { "name": "as", "description": { "kind": "markdown", "value": "Variable name the current item is assigned to." } },
+        { "name": "key", "description": { "kind": "markdown", "value": "Variable name the current key is assigned to." } },
+        { "name": "iteration", "description": { "kind": "markdown", "value": "Variable name for iteration info (index, cycle, isFirst, isLast, …)." } },
+        { "name": "reverse", "description": { "kind": "markdown", "value": "Loop in reverse order." }, "valueSet": "boolean" }
+      ]
+    },
+    {
+      "name": "f:groupedFor",
+      "description": { "kind": "markdown", "value": "Loops over an array grouped by a property." },
+      "attributes": [
+        { "name": "each", "description": { "kind": "markdown", "value": "The array to iterate." } },
+        { "name": "as", "description": { "kind": "markdown", "value": "Variable name for the current group." } },
+        { "name": "groupBy", "description": { "kind": "markdown", "value": "Property to group by." } },
+        { "name": "groupKey", "description": { "kind": "markdown", "value": "Variable name for the current group key." } }
+      ]
+    },
+    {
+      "name": "f:render",
+      "description": { "kind": "markdown", "value": "Renders a section, partial or delegate." },
+      "attributes": [
+        { "name": "section", "description": { "kind": "markdown", "value": "Name of the section to render." } },
+        { "name": "partial", "description": { "kind": "markdown", "value": "Name of the partial to render." } },
+        { "name": "arguments", "description": { "kind": "markdown", "value": "Arguments passed to the section/partial (array)." } },
+        { "name": "optional", "description": { "kind": "markdown", "value": "Render nothing instead of failing when missing." }, "valueSet": "boolean" },
+        { "name": "default", "description": { "kind": "markdown", "value": "Fallback content when optional and not found." } },
+        { "name": "contentAs", "description": { "kind": "markdown", "value": "Provide tag content to the partial/section under this name." } }
+      ]
+    },
+    {
+      "name": "f:section",
+      "description": { "kind": "markdown", "value": "Defines a named section that can be rendered with `f:render`." },
+      "attributes": [ { "name": "name", "description": { "kind": "markdown", "value": "Section name." } } ]
+    },
+    {
+      "name": "f:layout",
+      "description": { "kind": "markdown", "value": "Declares the layout a template uses." },
+      "attributes": [ { "name": "name", "description": { "kind": "markdown", "value": "Layout name (e.g. `Default`)." } } ]
+    },
+    {
+      "name": "f:variable",
+      "description": { "kind": "markdown", "value": "Assigns a value to a template variable." },
+      "attributes": [
+        { "name": "name", "description": { "kind": "markdown", "value": "Variable name." } },
+        { "name": "value", "description": { "kind": "markdown", "value": "Value to assign (or use tag content)." } }
+      ]
+    },
+    {
+      "name": "f:alias",
+      "description": { "kind": "markdown", "value": "Declares aliases for complex expressions, scoped to the tag content." },
+      "attributes": [ { "name": "map", "description": { "kind": "markdown", "value": "Array mapping alias names to values." } } ]
+    },
+    {
+      "name": "f:switch",
+      "description": { "kind": "markdown", "value": "Switch/case control structure." },
+      "attributes": [ { "name": "expression", "description": { "kind": "markdown", "value": "Expression to switch on." } } ]
+    },
+    {
+      "name": "f:case",
+      "description": { "kind": "markdown", "value": "A case within an `f:switch`." },
+      "attributes": [ { "name": "value", "description": { "kind": "markdown", "value": "Value to match against the switch expression." } } ]
+    },
+    { "name": "f:defaultCase", "description": { "kind": "markdown", "value": "The default branch of an `f:switch`." }, "attributes": [] },
+    {
+      "name": "f:count",
+      "description": { "kind": "markdown", "value": "Counts the elements of an array/iterable." },
+      "attributes": [ { "name": "subject", "description": { "kind": "markdown", "value": "The array/iterable to count." } } ]
+    },
+    {
+      "name": "f:cycle",
+      "description": { "kind": "markdown", "value": "Cycles through a list of values on each iteration." },
+      "attributes": [
+        { "name": "values", "description": { "kind": "markdown", "value": "Array of values to cycle." } },
+        { "name": "as", "description": { "kind": "markdown", "value": "Variable name for the current value." } }
+      ]
+    },
+    { "name": "f:debug", "description": { "kind": "markdown", "value": "Dumps a variable for debugging." }, "attributes": [
+      { "name": "title", "description": { "kind": "markdown", "value": "Optional title for the dump." } },
+      { "name": "typeOnly", "description": { "kind": "markdown", "value": "Only output the variable type." }, "valueSet": "boolean" }
+    ] },
+    { "name": "f:comment", "description": { "kind": "markdown", "value": "A comment; its content is never parsed or rendered." }, "attributes": [] },
+    {
+      "name": "f:format.raw",
+      "description": { "kind": "markdown", "value": "Outputs content without escaping. Use with care — only for trusted content." },
+      "attributes": [ { "name": "value", "description": { "kind": "markdown", "value": "Value to output unescaped (or use tag content)." } } ]
+    },
+    {
+      "name": "f:format.html",
+      "description": { "kind": "markdown", "value": "Renders a string through the RTE/lib.parseFunc pipeline." },
+      "attributes": [ { "name": "parseFuncTSPath", "description": { "kind": "markdown", "value": "TypoScript path to parseFunc config." } } ]
+    },
+    {
+      "name": "f:format.case",
+      "description": { "kind": "markdown", "value": "Converts the case of a string." },
+      "attributes": [
+        { "name": "value", "description": { "kind": "markdown", "value": "String to convert." } },
+        { "name": "mode", "description": { "kind": "markdown", "value": "`upper`, `lower`, `capital`, `uncapital`, `capitalWords`." } }
+      ]
+    },
+    {
+      "name": "f:format.crop",
+      "description": { "kind": "markdown", "value": "Crops a string to a maximum length." },
+      "attributes": [
+        { "name": "maxCharacters", "description": { "kind": "markdown", "value": "Maximum number of characters." } },
+        { "name": "append", "description": { "kind": "markdown", "value": "String appended when cropped (default `…`)." } },
+        { "name": "respectWordBoundaries", "description": { "kind": "markdown", "value": "Do not split words." }, "valueSet": "boolean" }
+      ]
+    },
+    {
+      "name": "f:format.stripTags",
+      "description": { "kind": "markdown", "value": "Removes HTML tags from a string." },
+      "attributes": [
+        { "name": "value", "description": { "kind": "markdown", "value": "String to strip." } },
+        { "name": "allowedTags", "description": { "kind": "markdown", "value": "Tags to keep, e.g. `<br><strong>`." } }
+      ]
+    },
+    {
+      "name": "f:translate",
+      "description": { "kind": "markdown", "value": "Translates a label via an XLIFF key or `LLL:` reference." },
+      "attributes": [
+        { "name": "key", "description": { "kind": "markdown", "value": "Translation key or `LLL:EXT:…` reference." } },
+        { "name": "id", "description": { "kind": "markdown", "value": "Alias for `key`." } },
+        { "name": "default", "description": { "kind": "markdown", "value": "Fallback text when no translation exists." } },
+        { "name": "arguments", "description": { "kind": "markdown", "value": "sprintf arguments for the label." } },
+        { "name": "extensionName", "description": { "kind": "markdown", "value": "Extension name the label belongs to." } }
+      ]
+    },
+    {
+      "name": "f:image",
+      "description": { "kind": "markdown", "value": "Renders an `<img>` tag for a FAL image, with processing." },
+      "attributes": [
+        { "name": "image", "description": { "kind": "markdown", "value": "FAL file/reference object." } },
+        { "name": "src", "description": { "kind": "markdown", "value": "Path/UID alternative to `image`." } },
+        { "name": "width", "description": { "kind": "markdown", "value": "Target width (e.g. `200`, `200c`)." } },
+        { "name": "height", "description": { "kind": "markdown", "value": "Target height." } },
+        { "name": "cropVariant", "description": { "kind": "markdown", "value": "Name of the crop variant to apply." } },
+        { "name": "alt", "description": { "kind": "markdown", "value": "Alternative text." } },
+        { "name": "loading", "description": { "kind": "markdown", "value": "`lazy`, `eager` or `auto`." } }
+      ]
+    },
+    {
+      "name": "f:uri.image",
+      "description": { "kind": "markdown", "value": "Returns the processed URI of a FAL image (no tag)." },
+      "attributes": [
+        { "name": "image", "description": { "kind": "markdown", "value": "FAL file/reference object." } },
+        { "name": "width", "description": { "kind": "markdown", "value": "Target width." } },
+        { "name": "height", "description": { "kind": "markdown", "value": "Target height." } },
+        { "name": "cropVariant", "description": { "kind": "markdown", "value": "Crop variant name." } }
+      ]
+    },
+    {
+      "name": "f:uri.resource",
+      "description": { "kind": "markdown", "value": "Returns the public URI of an extension resource." },
+      "attributes": [
+        { "name": "path", "description": { "kind": "markdown", "value": "Path within `Resources/Public/`." } },
+        { "name": "extensionName", "description": { "kind": "markdown", "value": "Extension the resource belongs to." } }
+      ]
+    },
+    {
+      "name": "f:link.page",
+      "description": { "kind": "markdown", "value": "Renders a link to a TYPO3 page." },
+      "attributes": [
+        { "name": "pageUid", "description": { "kind": "markdown", "value": "Target page UID." } },
+        { "name": "additionalParams", "description": { "kind": "markdown", "value": "Extra query parameters (array)." } },
+        { "name": "section", "description": { "kind": "markdown", "value": "Anchor/section." } }
+      ]
+    },
+    {
+      "name": "f:link.typolink",
+      "description": { "kind": "markdown", "value": "Renders a link from a TypoLink parameter string." },
+      "attributes": [
+        { "name": "parameter", "description": { "kind": "markdown", "value": "TypoLink parameter (page id, URL, file, …)." } },
+        { "name": "textWrap", "description": { "kind": "markdown", "value": "Wrap for the link text." } }
+      ]
+    },
+    {
+      "name": "f:asset.css",
+      "description": { "kind": "markdown", "value": "Registers a CSS asset via the AssetCollector." },
+      "attributes": [
+        { "name": "identifier", "description": { "kind": "markdown", "value": "Unique asset identifier." } },
+        { "name": "href", "description": { "kind": "markdown", "value": "URI of the stylesheet." } },
+        { "name": "priority", "description": { "kind": "markdown", "value": "Include in the priority bucket." }, "valueSet": "boolean" }
+      ]
+    },
+    {
+      "name": "f:asset.script",
+      "description": { "kind": "markdown", "value": "Registers a JavaScript asset via the AssetCollector." },
+      "attributes": [
+        { "name": "identifier", "description": { "kind": "markdown", "value": "Unique asset identifier." } },
+        { "name": "src", "description": { "kind": "markdown", "value": "URI of the script." } },
+        { "name": "priority", "description": { "kind": "markdown", "value": "Include in the priority bucket." }, "valueSet": "boolean" }
+      ]
+    }
+  ],
+  "valueSets": [
+    { "name": "boolean", "values": [ { "name": "{true}" }, { "name": "{false}" } ] }
+  ]
+}

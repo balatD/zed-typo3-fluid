@@ -14,7 +14,8 @@ repository = "https://github.com/your-org/zed-typo3-fluid"
 repository = "file:///Users/draganbalatinac/Projects/private/tree-sitter-fluid"
 commit = "9f1a9f654d77f578d0b344d4549f5f32b67d8193"
 
-# Phase 3 (language server) will add, once the standalone Fluid LSP exists:
-# [language_servers.fluid-language-server]
-# name = "Fluid Language Server"
-# language = "Fluid"
+# Bundled dependency-free Node language server (server/server.js): ViewHelper
+# completion, hover docs and live diagnostics. Spawned via src/lib.rs.
+[language_servers.fluid-language-server]
+name = "Fluid Language Server"
+language = "Fluid"
