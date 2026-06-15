@@ -460,6 +460,7 @@ function handle(msg) {
       return;
     case 'textDocument/completion': return reply(msg.id, onCompletion(msg.params));
     case 'textDocument/hover': return reply(msg.id, onHover(msg.params));
+    case 'textDocument/onTypeFormatting': return reply(msg.id, onTypeFormatting(msg.params));
     default:
       if (msg.id !== undefined) reply(msg.id, null);
   }
@@ -475,6 +476,7 @@ function onInitialize(msg) {
       textDocumentSync: 1, // full
       completionProvider: { triggerCharacters: ['<', ':', ' ', '.'] },
       hoverProvider: true,
+      documentOnTypeFormattingProvider: { firstTriggerCharacter: '>' },
     },
     serverInfo: { name: 'fluid-language-server', version: '0.0.1' },
   });
@@ -597,6 +599,60 @@ function lastOpenTagBefore(lines, position) {
   if (lastLt === -1 || lastLt < lastGt) return null;
   const m = /^<\/?([a-z][a-z0-9_]*:[a-z0-9.]+)/i.exec(buf.slice(lastLt));
   return m ? m[1] : null;
+}
+
+// ───────────────────── Auto-close tags (on typing `>`) ──────────────────────
+const VOID_ELEMENTS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'keygen',
+  'link', 'menuitem', 'meta', 'param', 'source', 'track', 'wbr',
+]);
+
+function posToOffset(text, position) {
+  let line = 0, i = 0;
+  while (line < position.line && i < text.length) { if (text[i] === '\n') line++; i++; }
+  return i + position.character;
+}
+
+// Insert the matching close tag when `>` is typed to finish a start tag.
+// Self-closing tags (`<f:image/>`) and void HTML elements are skipped, as are
+// `>` characters inside quoted values or {expressions}.
+function onTypeFormatting(params) {
+  const text = documents.get(params.textDocument.uri);
+  if (text === undefined) return null;
+
+  let off = posToOffset(text, params.position);
+  if (text[off] === '>') off += 1;        // position reported at the '>' itself
+  if (text[off - 1] !== '>') return null;  // not immediately after a '>'
+  if (text[off - 2] === '/') return null;  // self-closing  <… />
+
+  const before = text.slice(0, off);
+  const lt = before.lastIndexOf('<');
+  if (lt < 0 || before[lt + 1] === '/' || before[lt + 1] === '!') return null;
+  const nameMatch = /^<([a-zA-Z][\w.:-]*)/.exec(before.slice(lt));
+  if (!nameMatch) return null;
+  const name = nameMatch[1];
+
+  // Verify the typed `>` is the tag's real close (ignore `>` inside "…" / '…' / {…}).
+  let q = null, depth = 0, closeAt = -1;
+  for (let i = lt + 1; i < off; i++) {
+    const c = before[i];
+    if (q) { if (c === '\\') { i++; continue; } if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; }
+    else if (c === '{') depth++;
+    else if (c === '}') { if (depth > 0) depth--; }
+    else if (c === '>' && depth === 0) { closeAt = i; break; }
+  }
+  if (closeAt !== off - 1) return null;
+
+  // ViewHelpers (names with `:`) are never void; for plain HTML, skip void tags.
+  if (!name.includes(':') && VOID_ELEMENTS.has(name.toLowerCase())) return null;
+
+  // Don't duplicate an existing close tag right after the cursor.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp('^\\s*</' + escaped + '\\s*>').test(text.slice(off))) return null;
+
+  const pos = makePositioner(text)(off);
+  return [{ range: { start: pos, end: pos }, newText: `</${name}>` }];
 }
 
 // ───────────────────────────── Diagnostics ─────────────────────────────────

@@ -70,6 +70,10 @@ spawned by `src/lib.rs` via Zed's Node) provides:
 - **Completion** — ViewHelper tag names (`<f:…>`) filtered by prefix, and the
   attributes of the ViewHelper you're inside.
 - **Hover** — Markdown documentation for ViewHelper tags and their attributes.
+- **Auto-close tags** — typing `>` to finish a start tag inserts the matching
+  close tag (`<f:for …>` → `</f:for>`), with the cursor left in between.
+  Self-closing tags (`<f:image …/>`), void HTML elements (`<br>`) and `>`
+  inside `{expressions}` are correctly skipped.
 - **Schema validation** (instant, no binary) — from the generated XSDs:
   - **Type checking** — a literal attribute value that doesn't match its
     declared type (`integer`, `boolean`, `float`) is flagged as an error, e.g.
