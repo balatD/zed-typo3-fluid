@@ -8,15 +8,10 @@ repository = "https://github.com/balatD/zed-typo3-fluid"
 
 # Dedicated tree-sitter grammar for Fluid: extends tree-sitter-html with
 # {expressions}, inline ViewHelpers, pipelines, casts, arrays, {namespace ...}
-# and dynamic tag names.
-#
-# PUBLISHING: this file:// path works for local dev only. Before submitting to
-# the Zed registry, push tree-sitter-fluid to https://github.com/balatD/tree-sitter-fluid
-# and change `repository` below to that URL (commit must exist on the remote).
-# See PUBLISHING.md.
+# and dynamic tag names. Hosted at github.com/balatD/tree-sitter-fluid.
 [grammars.fluid]
-repository = "file:///Users/draganbalatinac/Projects/private/tree-sitter-fluid"
-commit = "9098914792f8a76d9d277fcc8ebad3e280b3ad6d"
+repository = "https://github.com/balatD/tree-sitter-fluid"
+commit = "ee97bd712920cad660475f19f16d85204c0d3c3d"
 
 # Bundled dependency-free Node language server (server/server.js): ViewHelper
 # completion, hover docs and live diagnostics. Spawned via src/lib.rs.
