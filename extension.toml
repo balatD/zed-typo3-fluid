@@ -1,4 +1,4 @@
-id = "fluid"
+id = "typo3-fluid"
 name = "TYPO3 Fluid"
 description = "TYPO3 Fluid: highlighting, snippets and a language server (completion, hover, diagnostics)."
 version = "0.0.1"

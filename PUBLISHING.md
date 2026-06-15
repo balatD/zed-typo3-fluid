@@ -52,14 +52,14 @@ target installed.
 
 ```bash
 # fork + clone zed-industries/extensions, then:
-git submodule add https://github.com/balatD/zed-typo3-fluid.git extensions/fluid
+git submodule add https://github.com/balatD/zed-typo3-fluid.git extensions/typo3-fluid
 ```
 
 Add an entry to that repo's top-level `extensions.toml`:
 
 ```toml
-[fluid]
-submodule = "extensions/fluid"
+[typo3-fluid]
+submodule = "extensions/typo3-fluid"
 version = "0.1.0"     # must match this extension.toml
 ```
 
