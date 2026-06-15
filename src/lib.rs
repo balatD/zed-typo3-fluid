@@ -24,12 +24,21 @@ impl zed::Extension for FluidExtension {
         _language_server_id: &LanguageServerId,
         _worktree: &Worktree,
     ) -> Result<Command> {
-        // Resolve an absolute path to the bundled server (the spawned process'
-        // cwd is the worktree root, not the extension dir, so a relative path
-        // would not resolve).
-        let extension_dir =
-            std::env::current_dir().map_err(|e| format!("cannot resolve extension dir: {e}"))?;
-        let server = extension_dir.join("server").join("server.js");
+        // Zed does not copy loose extension files (server/) into the work dir,
+        // and the wasm sandbox can only read its work dir (== current_dir).
+        // So we embed the server + ViewHelper data at compile time and
+        // materialize them into the work dir on startup. server.js reads
+        // viewhelpers.json from its own __dirname, so both go side by side.
+        let dir =
+            std::env::current_dir().map_err(|e| format!("cannot resolve work dir: {e}"))?;
+        let server = dir.join("fluid-language-server.js");
+        std::fs::write(&server, include_str!("../server/server.js"))
+            .map_err(|e| format!("cannot write language server: {e}"))?;
+        std::fs::write(
+            dir.join("viewhelpers.json"),
+            include_str!("../server/viewhelpers.json"),
+        )
+        .map_err(|e| format!("cannot write ViewHelper data: {e}"))?;
 
         Ok(Command {
             command: zed::node_binary_path()?,
