@@ -4,7 +4,7 @@
 (attribute_name) @attribute
 (attribute_value) @string
 (comment) @comment
-(cdata) @comment
+(cdata) @string
 (entity) @string.special
 
 "=" @punctuation.delimiter.html
@@ -37,6 +37,8 @@
 (array_key) @property
 (type) @type
 (boolean) @constant.builtin
+(null) @constant.builtin
+(special_variable) @variable.builtin
 (number) @number
 (string) @string
 (operator) @operator
@@ -46,7 +48,7 @@
 (php_class) @type
 (cast "as" @keyword)
 (pipe "->" @operator)
-(ternary ["?" ":"] @operator)
+(ternary ["?" ":" "?:"] @operator)
 (pair ":" @punctuation.delimiter)
 (argument ":" @punctuation.delimiter)
 
@@ -55,3 +57,9 @@
   "("
   ")"
 ] @punctuation.bracket
+
+; Dim the plain-text body of <f:comment> (its content is never rendered).
+; Nested {expressions}/elements keep their own scopes — full opacity needs a
+; grammar-level change (see README, Known limitations).
+((element (start_tag (tag_name) @_n) (text) @comment)
+  (#eq? @_n "f:comment"))

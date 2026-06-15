@@ -16,7 +16,7 @@ repository = "https://github.com/balatD/zed-typo3-fluid"
 # See PUBLISHING.md.
 [grammars.fluid]
 repository = "file:///Users/draganbalatinac/Projects/private/tree-sitter-fluid"
-commit = "352c964c02cc82404407aff076736964f73578f1"
+commit = "9098914792f8a76d9d277fcc8ebad3e280b3ad6d"
 
 # Bundled dependency-free Node language server (server/server.js): ViewHelper
 # completion, hover docs and live diagnostics. Spawned via src/lib.rs.
