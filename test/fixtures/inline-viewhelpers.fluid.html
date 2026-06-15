@@ -1,0 +1,44 @@
+{f:format.trim()}
+{f:if(condition: foo, then: foo, else: _all)}
+{f:if(condition: "foo", then: 'title="title"', else: '{foo}')}
+{f:if(
+    condition: foo,
+    then: '{foo ? bar : _all}',
+    else: _all
+)}
+{f:if(
+    condition: foo,
+    then: foo,
+    else: {
+        0: 'foo',
+        'test': 'bar',
+        "lala": _all,
+        sub: { 1: test, 2: another, 3: 'test {foo}' }
+    }
+)}
+{f:if(
+    condition: "foo",
+    then: 'title="title"',
+    else: '{foo}'
+)}
+{foo -> f:format.trim()}
+{_all -> f:format.trim(foo: bar) -> f:format.test(test: 'lala')}
+{icon -> f:format.case(mode: 'capitalWords') -> f:replace(search: '-', replace: '')}
+
+<a href="{test}bar" asdasdasd="test"></a>
+<source
+    srcset="{f:uri.image(
+        image: image,
+        width: sourceConfig.width,
+        height: sourceConfig.height,
+        cropVariant: '{sourceConfig.cropVariant ? sourceConfig.cropVariant : \'default\'}',
+        fileExtension: fileExtension
+    )}"
+    media="(min-width: {minWidth}px)"
+/>
+<a {f:if(condition: "foo", then: 'title="title"', else: '{foo}')} {_all} {test}>
+    link
+</a>
+<{headline}></{headline}>
+<{f:if(condition: test, then: 'a', else: 'button')}></{f:if(condition: test, then: 'a', else: 'button')}>
+{f:uri.image(image: images.0, width: '{width * 2}')}

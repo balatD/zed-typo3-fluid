@@ -1,0 +1,132 @@
+{
+    "for loop": {
+        "prefix": ["f:for", "ffor"],
+        "body": ["<f:for each=\"{${1:array}}\" as=\"${2:element}\">", "\t$0", "</f:for>"],
+        "description": "Fluid f:for loop"
+    },
+    "grouped for loop": {
+        "prefix": ["f:groupedfor", "fgfor"],
+        "body": ["<f:groupedFor each=\"{${1:array}}\" as=\"${2:element}\" groupBy=\"${3:groupby}\">", "\t<f:for each=\"{${2:element}}\" as=\"${4:subelement}\">", "\t\t$0", "\t</f:for>", "</f:groupedFor>"],
+        "description": "Fluid f:groupedFor loop"
+    },
+    "if condition": {
+        "prefix": ["f:if", "fif"],
+        "body": ["<f:if condition=\"${1:condition}\">", "\t$0", "</f:if>"],
+        "description": "Fluid f:if condition"
+    },
+    "if-then-else condition": {
+        "prefix": ["f:ifel", "fifel"],
+        "body": ["<f:if condition=\"${1:condition}\">", "\t<f:then>${2:then}</f:then>", "\t<f:else>${3:else}</f:else>", "</f:if>"],
+        "description": "Fluid f:if / f:then / f:else"
+    },
+    "else-if": {
+        "prefix": ["f:elif", "felif"],
+        "body": ["<f:else if=\"${1:condition}\">${2:else}</f:else>"],
+        "description": "Fluid f:else if"
+    },
+    "switch": {
+        "prefix": ["f:switch", "fswitch"],
+        "body": ["<f:switch expression=\"{${1:expression}}\">", "\t<f:case value=\"${2:value}\">${3:case}</f:case>", "\t$0", "\t<f:defaultCase>${4:default}</f:defaultCase>", "</f:switch>"],
+        "description": "Fluid f:switch / f:case"
+    },
+    "render partial": {
+        "prefix": ["f:renderpartial", "frpartial", "fpartial"],
+        "body": ["<f:render partial=\"${1:Partial}\" arguments=\"{${2:arguments}}\" />"],
+        "description": "Fluid f:render partial"
+    },
+    "render section": {
+        "prefix": ["f:rendersection", "frsection"],
+        "body": ["<f:render section=\"${1:Content}\" arguments=\"{${2:arguments}}\" />"],
+        "description": "Fluid f:render section"
+    },
+    "layout": {
+        "prefix": ["f:layout", "flayout"],
+        "body": ["<f:layout name=\"${1:Default}\" />"],
+        "description": "Fluid f:layout reference"
+    },
+    "alias": {
+        "prefix": ["f:alias", "falias"],
+        "body": ["<f:alias map=\"{${1:map}}\">", "\t$0", "</f:alias>"],
+        "description": "Fluid f:alias"
+    },
+    "section definition": {
+        "prefix": ["f:section", "fsection"],
+        "body": ["<f:section name=\"${1:Content}\">", "\t$0", "</f:section>"],
+        "description": "Fluid f:section definition"
+    },
+    "argument definition": {
+        "prefix": ["f:arg", "farg"],
+        "body": ["<f:argument name=\"${1:name}\" type=\"${2:string}\" />"],
+        "description": "Fluid f:argument definition"
+    },
+    "variable definition": {
+        "prefix": ["f:var", "fvar"],
+        "body": ["<f:variable name=\"${1:name}\" value=\"${2:value}\" />"],
+        "description": "Fluid f:variable definition"
+    },
+    "fragment definition": {
+        "prefix": ["f:fragment", "ffragment"],
+        "body": ["<f:fragment name=\"${1:content}\">", "\t$0", "</f:fragment>"],
+        "description": "Fluid f:fragment definition"
+    },
+    "slot": {
+        "prefix": ["f:slot", "fslot"],
+        "body": ["<f:slot name=\"${1:name}\" />"],
+        "description": "Fluid f:slot"
+    },
+    "debug": {
+        "prefix": ["f:debug", "fdebug"],
+        "body": ["<f:debug>$0</f:debug>"],
+        "description": "Fluid f:debug"
+    },
+    "translate": {
+        "prefix": ["f:translate", "f:trans", "ftrans"],
+        "body": ["<f:translate key=\"${1:key}\" />"],
+        "description": "TYPO3 f:translate"
+    },
+    "translate (inline syntax)": {
+        "prefix": ["f:transinline", "ftransinline"],
+        "body": ["{f:translate(key: '${1:key}')}"],
+        "description": "TYPO3 f:translate (inline)"
+    },
+    "image": {
+        "prefix": ["f:image", "fimage"],
+        "body": ["<f:image image=\"{${1:image}}\" width=\"${2:200}\" />"],
+        "description": "TYPO3 f:image"
+    },
+    "resource URI (inline syntax)": {
+        "prefix": ["f:uri.resource", "f:resourceuri", "fresourceuri"],
+        "body": ["{f:uri.resource(path: '${1:logo.svg}', extensionName: '${2:extension}')}"],
+        "description": "TYPO3 f:uri.resource (inline)"
+    },
+    "CSS asset": {
+        "prefix": ["f:asset.css", "f:cssasset", "fcssasset"],
+        "body": ["<f:asset.css identifier=\"${1:identifier}\" href=\"${2:path}\" />"],
+        "description": "TYPO3 f:asset.css"
+    },
+    "JavaScript asset": {
+        "prefix": ["f:asset.script", "f:javascriptasset", "fjavascriptasset"],
+        "body": ["<f:asset.script identifier=\"${1:identifier}\" src=\"${2:path}\" />"],
+        "description": "TYPO3 f:asset.script"
+    },
+    "render content area": {
+        "prefix": ["f:render.contentarea", "f:rendercontentarea", "frendercontentarea"],
+        "body": ["<f:render.contentArea contentArea=\"{${1:content.main}}\" />"],
+        "description": "TYPO3 f:render.contentArea"
+    },
+    "render record": {
+        "prefix": ["f:render.record", "f:renderrecord", "frenderrecord"],
+        "body": ["<f:render.record record=\"{${1:record}}\" />"],
+        "description": "TYPO3 f:render.record"
+    },
+    "render text": {
+        "prefix": ["f:render.text", "f:rendertext", "frendertext"],
+        "body": ["<f:render.text record=\"{${1:record}}\" field=\"${2:bodytext}\" />"],
+        "description": "TYPO3 f:render.text"
+    },
+    "TypoScript content object (cObj)": {
+        "prefix": ["f:cObj", "f:typoscriptcontentobject", "ftyposcriptcontentobject"],
+        "body": ["<f:cObj.text typoscriptObjectPath=\"${1:lib.myLib}\" />"],
+        "description": "TYPO3 f:cObj.text"
+    }
+}

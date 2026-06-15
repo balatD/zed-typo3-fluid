@@ -1,0 +1,14 @@
+{true} {false} {null} {_all}
+{foo} {foo.bar}
+{foo as boolean}
+{foo % 5}
+{foo + 5}
+{foo - 5}
+{foo * 5}
+{foo / 5}
+{foo ^ 5}
+{foo ? x : y}
+{foo ?: y}
+{true ? false: true}
+{_all as array}
+{!foo ?: y}

@@ -1,0 +1,7 @@
+# Zed extension build artifacts
+/target
+/grammars
+*.wasm
+
+# OS
+.DS_Store

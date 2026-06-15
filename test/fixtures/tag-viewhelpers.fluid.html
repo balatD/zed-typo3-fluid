@@ -1,0 +1,39 @@
+<f:variable name="labels" value="{
+    phone: '{f:translate(key: \'location.phone\', extensionName: \'myExtension\')}',
+    email: '{f:translate(key: \'location.email\', extensionName: \'myExtension\')}',
+}" />
+<f:media
+    file="{file}"
+    class="media {f:if(condition: '{file.properties.width / file.properties.height} == {16 / 9}', then: 'media--16by9')} {class}"
+    additionalConfig="{muted: muted, controls: controls, playsinline: playsinline, loop: loop, autoplay: autoplay}"
+/>
+<f:render partial="Icons/{icon -> f:format.case(mode: 'capitalWords') -> f:replace(search: '-', replace: '')}" arguments="{class: 'icon icon--{icon}'}" optional="true"/>
+<f:if condition="{candidateWidth} <= {file.properties.width}"></f:if>
+<f:if condition="{foo} === {bar}">
+    <f:then>
+        <f:format.raw>{foo}</f:format.raw>
+    </f:then>
+    <f:else if="{test} < 10">
+    </f:else>
+</f:if>
+<f:join value="{
+    0: foo,
+    1: bar,
+    2: 'baz'
+}" />
+<f:join value="{0: foo, 1: bar, 2: 'baz'}" />
+<f:join
+    value='{
+        foo: bar,
+        "test": test,
+        'sub': {
+            0: test,
+            1: "test"
+        },
+        escaping: "\\'"
+        vh: '{f:format.html(foo: bar)}',
+        variable: '{foo}',
+    }'
+/>
+<f:link.typolink parameter="{item.link}" textWrap="<span class=\"author__listlitem_icon\">{linkIcon -> f:format.raw()}</span>" />
+<f:variable name="rawText" value="{text -> f:format.stripTags(allowedTags: '<br><sup><sub>')}"/>
